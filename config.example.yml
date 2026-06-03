@@ -1,0 +1,27 @@
+# svodka configuration (non-secret settings).
+# Secrets (api_id, api_hash, session, Anthropic key) live in GitHub Actions
+# Secrets, NOT here. See README.md.
+
+# Chats to read. Use @username or a t.me/<name> link (recommended).
+# Private chats without a username can be referenced by numeric id.
+source_chats:
+  - "@durov"
+  - "https://t.me/telegram"
+
+# Where to post the digest.
+#   "me"      -> your Saved Messages (safe preview; the default)
+#   "@group"  -> a group/channel you can post to (go live)
+target_chat: "me"
+
+# How far back to read, in hours.
+window_hours: 24
+
+# Output language of the digest (e.g. ru, en).
+output_lang: "ru"
+
+# IANA timezone used for date wording in the digest header.
+timezone: "Europe/Belgrade"
+
+# Anthropic model id and output budget.
+model: "claude-sonnet-4-6"
+max_output_tokens: 2000

@@ -1,0 +1,24 @@
+# Telegram session — полный доступ к аккаунту, НИКОГДА не коммитить
+session*.json
+session*.txt
+
+# локальные конфиги/секреты
+*.local
+.env
+.env.*
+
+# сборка
+bin/
+/svodka
+/login
+
+# Go служебное
+vendor/
+*.test
+*.out
+coverage.*
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

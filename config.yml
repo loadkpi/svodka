@@ -1,0 +1,18 @@
+# svodka configuration. Edit this file (GitHub web editor works fine).
+# Secrets are NOT stored here — set them as GitHub Actions Secrets (see README.md).
+
+# Chats to read. Replace with your own. Use @username or t.me/<name> links.
+source_chats: []
+# Example:
+# source_chats:
+#   - "@my_team_chat"
+#   - "https://t.me/some_channel"
+
+# "me" posts to your Saved Messages (safe preview). Set to "@yourgroup" to go live.
+target_chat: "me"
+
+window_hours: 24
+output_lang: "ru"
+timezone: "UTC"
+model: "claude-sonnet-4-6"
+max_output_tokens: 2000
