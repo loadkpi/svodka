@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(gh api *)",
+      "Bash(python3 -c \"import sys,json; [print\\(x['name']\\) for x in json.load\\(sys.stdin\\)]\")",
+      "Bash(gh auth *)",
+      "Bash(go doc *)",
+      "Bash(go run *)"
+    ]
+  }
+}
