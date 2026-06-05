@@ -39,7 +39,7 @@
   `!Authorized` понятная ошибка про refresh session в Codespace.
 - [x] M1.5 `go build ./...`, `go vet ./...` — зелёные.
 
-## M2 — Login-команда (Codespaces)  `[ ]`
+## M2 — Login-команда (Codespaces)  `[x]`
 
 - [x] M2.1 `termAuth` — реализация `auth.UserAuthenticator` (Phone/Code/Password из
   stdin; SignUp → ошибка «аккаунт не существует»; AcceptTOS).
@@ -51,11 +51,18 @@
   `&config.Config{Secrets}` с пустым Session → `telegram.New` → `client.Run` →
   `Auth().IfNecessary(ctx, auth.NewFlow(telegram.TermAuth(os.Stdin, os.Stderr), auth.SendCodeOptions{}))`
   → Status-check → лог `user_id`. Экспорт session в Secret — M2.3.
-- [ ] M2.3 По успеху — экспорт session → base64; попытка `gh secret set
-  SVODKA_TELEGRAM_SESSION`; fallback: печать строки + инструкция вставить вручную.
-- [ ] M2.4 Маскирование: не печатать session, если ушёл в секрет; явное предупреждение
-  о чувствительности.
-- [ ] M2.5 `go build ./...`, `go vet ./...`.
+- [x] M2.3 По успеху — `telegram.Export` → base64; `storeSession`: `exec.LookPath("gh")`,
+  затем `gh secret set SVODKA_TELEGRAM_SESSION` (stdin = base64). При отсутствии gh или
+  ошибке команды — fallback `printManual` (печать строки + инструкция вставить вручную;
+  stderr от gh показывается).
+- [x] M2.4 Маскирование: при успехе `gh` сама строка НЕ печатается (только лог
+  `session stored as GitHub secret`); в fallback — предупреждение «full access, не
+  передавать, добавить в Secrets, очистить терминал» (warning в stderr, значение в stdout).
+- [x] M2.5 `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt` — зелёные.
+  `api/cmd/login/main_test.go` — тест инварианта маскирования (ADR-7): чистое ядро
+  `persistSession(stdout, stderr, setter, b64)` (exec вынесен в `ghSecretSet`); кейсы:
+  успех → строка не утекает в stdout/stderr; ошибка setter → fallback печатает строку
+  + warning + текст ошибки; nil setter (нет gh) → fallback.
 
 ## M3 — Резолв пиров + чтение истории  `[ ]`
 

@@ -1,110 +1,114 @@
 # svodka — Handoff (для продолжения в новой сессии)
 
-Дата заморозки: 2026-06-03 (после закрытия M0 и M1).
+Дата заморозки: 2026-06-05 (после закрытия M0, M1, M2).
 
 ## Где читать контекст
 - `docs/requirements.md` — что и зачем.
-- `docs/architecture.md` — как устроено + ADR (важные решения).
-- `docs/plan.md` — подзадачи со статусами (чекбоксы).
-- Plan-файлы Claude Code:
-  - `~/.claude/plans/swift-wondering-pnueli.md` — исходный план фазы M0.
-  - `~/.claude/plans/1-pavel-kozlov-2-hazy-sloth.md` — план закрытия M0.6/M0.7.
+- `docs/architecture.md` — как устроено + ADR (важные решения; ADR-7 — про тесты).
+- `docs/plan.md` — подзадачи со статусами (чекбоксы). M0/M1/M2 — `[x]`, M3 — на очереди.
+- Auto-memory подхватится автоматически (профиль, стиль работы, ссылки, правило про комменты).
 
 ## Текущее состояние
 
-**M0 (скаффолд) — закрыт `[x]`:**
-- `go.mod` (`module svodka`, Go 1.25). Прямые зависимости: `gotd/td v0.144.0`,
-  `gotd/contrib v0.21.1`, `ardanlabs/conf/v3 v3.12.0`, `gopkg.in/yaml.v3`.
-- `foundation/logger/logger.go` — slog-обёртка (Info/Warn/Error с ctx).
+**M0 (скаффолд) — `[x]`:**
+- `go.mod` (`module svodka`, Go 1.25). Прямые: `gotd/td v0.144.0`, `gotd/contrib v0.21.1`,
+  `ardanlabs/conf/v3 v3.12.0`, `gopkg.in/yaml.v3`, `golang.org/x/term` (добавлен в M2).
+- `foundation/logger/logger.go` — slog-обёртка (Info/Warn/Error с ctx), в stderr, без контента.
 - `config/config.go` — `Secrets` (conf/env) + `Settings` (yaml.v3) + `Load`/`LoadSecrets`.
-  `LoadSecrets()` не требует session — подходит для login.
-- `config.yml`, `config.example.yml`.
-- `.gitignore` (включая `session*.json`, `session*.txt`, `*.local`, `bin/`, IDE/OS).
-- `LICENSE` (MIT, Pavel Kozlov 2026).
-- `Makefile` (default = `help`; цели: tidy/vet/build/run/login).
-- `docs/*`.
+- `config.yml`, `config.example.yml`. `.gitignore` (англ. комменты), `LICENSE` (MIT), `Makefile`.
 
-**M1 (Telegram core + svodka main) — закрыт `[x]`:**
-- `business/telegram/session.go` — `LoadStorage(ctx, b64)` / `Export(ctx, s)` через
-  `encoding/base64`. Поверх `session.StorageMemory{StoreSession, LoadSession}`.
-- `business/telegram/client.go` — обёртка `Client`:
-  - `New(ctx, *config.Config) (*Client, error)` — собирает `telegram.NewClient`
-    с `Options{SessionStorage, Middlewares: [floodwait.NewSimpleWaiter()], Logger: nil}`.
-  - `Run(ctx, fn func(ctx, *tg.Client) error) error` — pass-through к `tg.Client.Run`,
-    прокидывает `c.tg.API()` в fn.
-  - `Auth() *auth.Client` — для status-check и login.
-  - `Storage() *session.StorageMemory` — для login (Export после auth).
-- `api/cmd/svodka/main.go` — entrypoint: `signal.NotifyContext(INT/TERM)` → `config.Load()`
-  → `telegram.New` → `client.Run` → `Auth().Status`; smoke-лог `user_id` (БЕЗ username/имени —
-  логи Actions могут быть публичны). Обработка `config.ErrHelp` для `--help`.
-- Build/vet — зелёные.
+**M1 (Telegram core + svodka main) — `[x]`:**
+- `business/telegram/session.go` — `LoadStorage(ctx, b64)` / `Export(ctx, s) (b64, error)`.
+- `business/telegram/client.go` — `Client{New, Run, Auth, Storage}`; Options: SessionStorage,
+  Middlewares=[floodwait], Logger=nil.
+- `api/cmd/svodka/main.go` — smoke: signal → `config.Load` → `client.Run` → `Auth().Status` →
+  лог `user_id`.
 
-**Что НЕ сделано — следующий шаг M2 (Login-команда, Codespaces):**
-1. M2.1 `business/telegram/auth.go` (или `term_auth.go`) — `termAuth` тип, реализующий
-   `auth.UserAuthenticator`: Phone (stdin), Code (stdin), Password (stdin — для 2FA),
-   `AcceptTermsOfService`, `SignUp` → возвращать ошибку «аккаунт не существует, создайте
-   через официальный клиент».
-2. M2.2 `api/cmd/login/main.go` — `config.LoadSecrets()` (нужны только api_id/hash;
-   session ещё нет — поэтому НЕ `Load()`), `telegram.New(ctx, cfg)` с пустым cfg.Telegram.Session;
-   `client.Run` → `client.Auth().IfNecessary(ctx, auth.NewFlow(termAuth, auth.SendCodeOptions{}))`.
-3. M2.3 По успеху: `telegram.Export(ctx, client.Storage())` → base64 → попытка
-   `exec.Command("gh", "secret", "set", "SVODKA_TELEGRAM_SESSION")` со stdin = base64;
-   fallback при ошибке gh: печать base64 + инструкция «вставьте вручную в Settings → Secrets».
-4. M2.4 Маскирование: если ушёл в Secret через `gh` — НЕ печатать саму строку; явное
-   предупреждение «session = полный доступ к аккаунту, не передавайте никому».
-5. M2.5 `go build ./...`, `go vet ./...`.
+**M2 (Login-команда, Codespaces) — `[x]`, с тестами:**
+- `business/telegram/term_auth.go`:
+  - приватный `termAuth` реализует `auth.UserAuthenticator` (Phone/Code/Password из stdin,
+    промпты в stderr, значения не логируются; пароль — `term.ReadPassword` с fallback на
+    bufio при не-tty; `SignUp`→ошибка «нет аккаунта»; `AcceptTermsOfService`→nil).
+  - экспортируемая фабрика `TermAuth(in *os.File, out io.Writer) auth.UserAuthenticator`
+    (возвращает интерфейс — как `auth.Constant/CodeOnly/Env` у gotd; тип приватный).
+- `business/telegram/term_auth_test.go` — юниты через `os.Pipe` (read-конец = не tty →
+  fallback-ветка пароля): Phone/Code/Password, trim, EOF, flow, SignUp-отказ, AcceptTOS.
+- `api/cmd/login/main.go` — `config.LoadSecrets` → `&config.Config{Secrets}` с пустым Session →
+  `telegram.New` → `client.Run` → `Auth().IfNecessary(NewFlow(TermAuth(os.Stdin, os.Stderr),
+  SendCodeOptions{}))` → Status → лог `user_id` → `Export` → `storeSession`.
+  - `storeSession` → `persistSession(stdout, stderr, setter, b64)` (чистое ядро) + `ghSecretSet`
+    (тонкая `exec`-обёртка). gh есть → `gh secret set SVODKA_TELEGRAM_SESSION` (stdin=b64),
+    при успехе строка НЕ печатается; gh нет/упал → `printManual` (warning в stderr + строка в stdout).
+- `api/cmd/login/main_test.go` — тест инварианта маскирования (ADR-7): успех→нет утечки в
+  stdout/stderr; ошибка setter→fallback+warning+текст ошибки; nil setter→fallback.
 
-Далее M3…M8 по `docs/plan.md`.
+**Гигиена репо (M2-побочное):** `.claude/settings.local.json` снят с отслеживания
+(`git rm --cached`, файл на диске остался) и добавлен в `.gitignore`. Комменты в `.gitignore`
+переведены на английский (правило: артефакты публичного template — англ. комменты, `docs/` — рус.).
 
-**Важно:** репозиторий уже имеет `.git`. Коммитов ещё не было. Коммиты НЕ делать без
-явной просьбы пользователя. `.gitignore` уже на месте — `session*.json` защищён.
+**Состояние сборки:** `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt -l .` — всё зелёное.
+Коммитов в репо ещё НЕ было. Коммиты НЕ делать без явной просьбы.
+
+**Функциональный прогон login** (ввод телефона/кода в Codespace, реальное создание секрета) —
+на стороне Deployer'а: нужны его api_id/api_hash и `gh auth`. Со стороны кода всё собрано.
+
+## Следующий шаг — M3 (резолв пиров + чтение истории)
+
+Подзадачи (см. `docs/plan.md` §M3):
+- M3.1 `business/telegram/resolve.go` — `peers.Manager`; `Resolve(s)` с нормализацией
+  (`@`, `t.me/`), `manager.Resolve` для юзернеймов/доменов.
+- M3.2 Фолбэк числовых id: один раз карта id→InputPeer через `query.GetDialogs(...).ForEach`.
+- M3.3 `business/telegram/history.go` — `FetchWindow(peer, since time.Time) ([]Message)`:
+  итератор `GetHistory`, стоп по `date < since`.
+- M3.4 Нормализация: type-switch `*tg.Message`; автор из `Elem.Entities`; текст; медиа→плейсхолдер;
+  пропуск сервисных.
+- M3.5 Тип `Message{ChatTitle, Author, Time, Text}` + группировка `ChatMessages`.
+- M3.6 `go build`/`vet`/`test`/`gofmt`.
+
+**Развилки M3 обсудить ДО кода (через AskUserQuestion):**
+- Формат фолбэка числовых id (ленивый скан всех диалогов vs ошибка с просьбой использовать @username).
+- Структура `Message`/`ChatMessages` (поля, время как `time.Time` vs unix int).
+- Обработка медиа (единый плейсхолдер `[photo]`/`[document]` vs детальнее) и сервисных сообщений.
+- Что тестировать по ADR-7: нормализация `*tg.Message`→`Message` — чистая, тестируемо table-тестом
+  без сети; сам `GetHistory`/resolve — сетевые, не юнитим.
 
 ## Финализированные имена env (Secrets)
-- `SVODKA_TELEGRAM_API_ID`
-- `SVODKA_TELEGRAM_API_HASH`
-- `SVODKA_TELEGRAM_SESSION`  (base64 session из команды login)
-- `SVODKA_ANTHROPIC_KEY`
-- `SVODKA_CONFIG` (путь к config.yml, default `config.yml`)
+- `SVODKA_TELEGRAM_API_ID`, `SVODKA_TELEGRAM_API_HASH`, `SVODKA_TELEGRAM_SESSION` (base64 из login),
+  `SVODKA_ANTHROPIC_KEY`, `SVODKA_CONFIG` (default `config.yml`).
 
 ## Ключевые подводные камни (проверено эмпирически)
-- `ardanlabs/conf/v3/yaml` **игнорирует нулевые значения** (false/0/"") → НЕ используем
-  его для config.yml; читаем файл через `gopkg.in/yaml.v3`. conf — только для env-секретов.
-- conf `env:`-тег пишется **без префикса**: `conf:"env:TELEGRAM_API_ID"` →
-  итоговое имя `SVODKA_TELEGRAM_API_ID` (префикс добавляется автоматически).
+- `ardanlabs/conf/v3/yaml` игнорирует нулевые значения → config.yml читаем `gopkg.in/yaml.v3`;
+  conf — только env-секреты. conf `env:`-тег пишется БЕЗ префикса (SVODKA добавляется сам).
 - Нет булева `dry_run`: безопасный режим = `target_chat: "me"` (Saved Messages).
-- gotd Logger в Options оставляем `nil` (zap) — чтобы не текли данные в логи.
-- В `svodka/main.go` логируем **только `user_id`** — username/имя считаем PII-смежным
-  (логи Actions у форкнутого template могут быть видимы посторонним).
+- gotd Logger в Options = `nil` (чтобы не текли данные). В логах — только `user_id`/метрики, не контент.
+- Тесты (ADR-7): юнитим только чистую логику без сети/кредов; обёртки над gotd/HTTP/exec — не юнитим
+  (build+vet+review+ручной прогон). Для tty-ветки в тестах — `os.Pipe` (read-конец не tty → fallback).
+- Комменты в коде/конфигах — на английском (публичный template); `docs/` и общение — на русском.
 
-## Справочник API (выверено через `go doc`, чтобы не исследовать заново)
+## Справочник API (выверено через `go doc`)
 
 ### gotd/td (v0.144.0)
 ```
 telegram.NewClient(appID int, appHash string, opt telegram.Options) *Client
-telegram.Options{ SessionStorage, Middlewares []Middleware, Logger *zap.Logger(nil),
-                  UpdateHandler, NoUpdates bool }
-(*Client).Run(ctx, func(ctx) error) error
-(*Client).API() *tg.Client
-(*Client).Auth() *auth.Client
-(*Client).Self(ctx) (*tg.User, error)
+telegram.Options{ SessionStorage, Middlewares []Middleware, Logger *zap.Logger(nil), NoUpdates bool }
+(*Client).Run(ctx, func(ctx) error) error;  .API() *tg.Client;  .Auth() *auth.Client;  .Self(ctx)(*tg.User,error)
 
-session.StorageMemory{}:  StoreSession(ctx, []byte) error;  LoadSession(ctx)([]byte,error)
-                          Bytes(to []byte)([]byte,error)
+session.StorageMemory{}:  StoreSession(ctx,[]byte)error; LoadSession(ctx)([]byte,error); Bytes(to)([]byte,error)
 
 auth.NewFlow(UserAuthenticator, auth.SendCodeOptions) Flow
-auth.UserAuthenticator iface: Phone(ctx)(string,error); Password(ctx)(string,error);
+auth.UserAuthenticator: Phone(ctx)(string,error); Password(ctx)(string,error);
    AcceptTermsOfService(ctx, tg.HelpTermsOfService)error; SignUp(ctx)(UserInfo,error);
-   Code(ctx, *tg.AuthSentCode)(string,error)
-helpers: auth.Constant(phone,pass,code), auth.CodeOnly(phone,code), auth.Env(prefix,code)
-(*auth.Client).Status(ctx) (*auth.Status{Authorized bool, User *tg.User}, error)
-(*auth.Client).IfNecessary(ctx, Flow) error
+   Code(ctx,*tg.AuthSentCode)(string,error)
+auth.SendCodeOptions{AllowFlashCall,CurrentNumber,AllowAppHash bool}
+auth.UserInfo{FirstName,LastName string}
+helpers: auth.Constant/CodeOnly/Env (все возвращают UserAuthenticator)
+(*auth.Client).Status(ctx)(*auth.Status{Authorized bool, User *tg.User},error); .IfNecessary(ctx,Flow)error
 
-floodwait.NewSimpleWaiter() *SimpleWaiter   // implements telegram.Middleware (Handle)
-   .WithMaxRetries(uint) .WithMaxWait(time.Duration)
+floodwait.NewSimpleWaiter() *SimpleWaiter  // telegram.Middleware; .WithMaxRetries(uint).WithMaxWait(dur)
 ratelimit.New(r rate.Limit, b int) *RateLimiter
 
-peers.Options{Storage, Cache, Logger}.Build(api *tg.Client) *Manager
-   // use &peers.InmemoryStorage{}, &peers.InmemoryCache{}
+peers.Options{Storage,Cache,Logger}.Build(api *tg.Client) *Manager
+   // &peers.InmemoryStorage{}, &peers.InmemoryCache{}
 (*Manager).Resolve(ctx, from string)(Peer,error)   // @username/domain
 (*Manager).Self(ctx)(User,error)
 Peer iface: InputPeer() tg.InputPeerClass; VisibleName() string; ID() int64; Username()(string,bool)
@@ -113,48 +117,40 @@ query.Messages(raw).GetHistory(peer tg.InputPeerClass) *GetHistoryQueryBuilder
    .BatchSize(int).OffsetDate(int).OffsetID(int).Iter() *Iterator
    (*Iterator).Next(ctx) bool; .Value() Elem; .Err() error
    Elem{ Msg tg.NotEmptyMessage; Peer tg.InputPeerClass; Entities peer.Entities }
-   Elem.Photo()/Document()/File()  // для медиа-плейсхолдеров
+   Elem.Photo()/Document()/File()  // медиа-плейсхолдеры
 query.GetDialogs(raw) *GetDialogsQueryBuilder  // .BatchSize.ForEach(ctx, cb(ctx, dialogs.Elem)error)
    dialogs.Elem{ Peer tg.InputPeerClass; Last tg.NotEmptyMessage; Entities peer.Entities }
 
 message.NewSender(raw) *Sender
-   Sender.Self() *RequestBuilder; Sender.To(peer) *RequestBuilder; Sender.Resolve(from) *RequestBuilder
-   (Builder).Text(ctx, msg string)(tg.UpdatesClass,error)
-   (Builder).StyledText(ctx, ...StyledTextOption)(tg.UpdatesClass,error)
+   Sender.Self()/.To(peer)/.Resolve(from) *RequestBuilder
+   (Builder).Text(ctx, msg string)(tg.UpdatesClass,error); .StyledText(ctx, ...StyledTextOption)(...)
 
 // сообщение: type-switch Elem.Msg.(*tg.Message); поля GetID()int, GetDate()int,
 // GetMessage()string, GetFromID()(tg.PeerClass,bool). Автора брать из Elem.Entities
-// (методы User/Chat/Channel — уточнить сигнатуры в следующей сессии при реализации).
+// (методы User/Chat/Channel — уточнить сигнатуры при реализации M3.4).
 ```
 
 ### conf (v3.12.0)
 ```
 conf.Parse("SVODKA", &cfg, parsers...) (help string, err)   // errors.Is(err, conf.ErrHelpWanted)
-теги: env: (без префикса), default:, flag:, short:, required, mask, noprint, help:
-встроить conf.Version для -v/--version
+теги: env:(без префикса), default:, flag:, short:, required, mask, noprint, help:; conf.Version для -v
 ```
 
-### Внутренние сигнатуры (написаны в M0/M1)
+### Внутренние сигнатуры
 ```
-// config
-config.Load() (*Config, error)         // полная, требует SVODKA_TELEGRAM_SESSION + ANTHROPIC + source_chats
-config.LoadSecrets() (Secrets, error)  // только env, без session (подходит для login)
+config.Load() (*Config, error)         // полная: session+anthropic+source_chats
+config.LoadSecrets() (Secrets, error)  // только env, без session (для login)
 config.ErrHelp                          // sentinel при --help/--version, выходить с кодом 0
-// telegram
 telegram.LoadStorage(ctx, b64) (*session.StorageMemory, error)
 telegram.Export(ctx, *session.StorageMemory) (string, error)
 telegram.New(ctx, *config.Config) (*Client, error)
-(*Client).Run(ctx, func(ctx, *tg.Client) error) error
-(*Client).Auth() *auth.Client
-(*Client).Storage() *session.StorageMemory
-// logger
-logger.New(service string) *Logger
-(*Logger).Info/Warn/Error(ctx, msg, args...)
+telegram.TermAuth(in *os.File, out io.Writer) auth.UserAuthenticator
+(*Client).Run(ctx, func(ctx, *tg.Client) error) error; .Auth() *auth.Client; .Storage() *session.StorageMemory
+logger.New(service string) *Logger; (*Logger).Info/Warn/Error(ctx, msg, args...)
 ```
 
-## Открытые вопросы к следующей сессии
-- Проверить актуальный id модели Claude (`claude-sonnet-4-6` как default) при реализации `claude.go`.
-- `peer.Entities` — уточнить методы lookup автора по FromID.
-- Telegram limit 4096 символов на сообщение → сплит в `send.go`.
-- В `gh secret set` — проверить, что Codespaces CLI имеет права `gh auth status` (обычно да);
-  если нет — какие именно сообщения помогать показать.
+## Открытые вопросы к M3+
+- `peer.Entities` — уточнить методы lookup автора по FromID (M3.4).
+- Telegram limit 4096 символов на сообщение → сплит в `send.go` (M6.1).
+- Актуальный id модели Claude (`claude-sonnet-4-6` как default) — проверить при `claude.go` (M4).
+- В `gh secret set` — проверить права в Codespaces (`gh auth status`); функциональный тест login.
