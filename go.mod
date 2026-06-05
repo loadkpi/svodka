@@ -6,6 +6,7 @@ require (
 	github.com/ardanlabs/conf/v3 v3.12.0
 	github.com/gotd/contrib v0.21.1
 	github.com/gotd/td v0.144.0
+	golang.org/x/term v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

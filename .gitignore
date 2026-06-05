@@ -1,18 +1,21 @@
-# Telegram session — полный доступ к аккаунту, НИКОГДА не коммитить
+# Telegram session — full account access, NEVER commit
 session*.json
 session*.txt
 
-# локальные конфиги/секреты
+# Local config / secrets
 *.local
 .env
 .env.*
 
-# сборка
+# Claude Code personal (non-shared) settings; not for the public template
+.claude/settings.local.json
+
+# Build output
 bin/
 /svodka
 /login
 
-# Go служебное
+# Go housekeeping
 vendor/
 *.test
 *.out

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help tidy vet build run login
+.PHONY: help tidy vet test build run login
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -9,6 +9,9 @@ tidy: ## go mod tidy
 
 vet: ## go vet ./...
 	go vet ./...
+
+test: ## go test ./...
+	go test ./...
 
 build:
 	go build -o bin/svodka ./api/cmd/svodka

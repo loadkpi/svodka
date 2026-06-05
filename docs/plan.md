@@ -41,10 +41,16 @@
 
 ## M2 — Login-команда (Codespaces)  `[ ]`
 
-- [ ] M2.1 `termAuth` — реализация `auth.UserAuthenticator` (Phone/Code/Password из
+- [x] M2.1 `termAuth` — реализация `auth.UserAuthenticator` (Phone/Code/Password из
   stdin; SignUp → ошибка «аккаунт не существует»; AcceptTOS).
-- [ ] M2.2 `api/cmd/login/main.go` — `config.Load` (нужны api_id/hash); client.Run;
-  `client.Auth().IfNecessary(ctx, auth.NewFlow(termAuth, ...))`.
+  `business/telegram/term_auth.go`: промпты в stderr, пароль через `term.ReadPassword`
+  с fallback на bufio при не-tty; введённые значения не логируются.
+  `term_auth_test.go` — юнит-тесты чистой логики (Phone/Code/Password-fallback, trim,
+  EOF, SignUp-отказ, AcceptTOS) через `os.Pipe`. Политика тестов закреплена в ADR-7.
+- [x] M2.2 `api/cmd/login/main.go` — `config.LoadSecrets` (НЕ Load: session ещё нет) →
+  `&config.Config{Secrets}` с пустым Session → `telegram.New` → `client.Run` →
+  `Auth().IfNecessary(ctx, auth.NewFlow(telegram.TermAuth(os.Stdin, os.Stderr), auth.SendCodeOptions{}))`
+  → Status-check → лог `user_id`. Экспорт session в Secret — M2.3.
 - [ ] M2.3 По успеху — экспорт session → base64; попытка `gh secret set
   SVODKA_TELEGRAM_SESSION`; fallback: печать строки + инструкция вставить вручную.
 - [ ] M2.4 Маскирование: не печатать session, если ушёл в секрет; явное предупреждение
