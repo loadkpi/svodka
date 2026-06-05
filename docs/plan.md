@@ -64,18 +64,22 @@
   успех → строка не утекает в stdout/stderr; ошибка setter → fallback печатает строку
   + warning + текст ошибки; nil setter (нет gh) → fallback.
 
-## M3 — Резолв пиров + чтение истории  `[ ]`
+## M3 — Резолв пиров + чтение истории  `[x]`
 
-- [ ] M3.1 `business/telegram/resolve.go` — построить `peers.Manager`; `Resolve(s)`:
-  нормализация (`@`, `t.me/`), `manager.Resolve` для юзернеймов/доменов.
-- [ ] M3.2 Фолбэк для числовых id: один раз собрать карту id→InputPeer через
-  `query.GetDialogs(...).ForEach`.
-- [ ] M3.3 `business/telegram/history.go` — `FetchWindow(peer, since time.Time) ([]Message)`:
-  итератор `GetHistory`, стоп по `date < since`.
-- [ ] M3.4 Нормализация: type-switch `*tg.Message`; автор из `Elem.Entities`; текст;
-  медиа → плейсхолдер; пропуск сервисных.
-- [ ] M3.5 Тип `Message{ChatTitle, Author, Time, Text}` и группировка `ChatMessages`.
-- [ ] M3.6 `go build ./...`, `go vet ./...`.
+- [x] M3.1 `business/telegram/resolve.go` — `Resolver{manager}` (один на запуск);
+  `Resolve(ref)`: `classifyInput` (strip `@`/`t.me/`, отказ на invite-ссылки),
+  `manager.Resolve` для юзернеймов/доменов. Юнит-тест `classifyInput`/`tdlibID` (ADR-7).
+- [x] M3.2 Фолбэк для числовых id: ленивый `ensureDialogs` — один проход
+  `query.GetDialogs(...).ForEach`, карта `TDLibPeerID → Peer` (ADR-8).
+- [x] M3.3 `business/telegram/history.go` — `FetchWindow(ctx, api, Peer, since time.Time)
+  (ChatMessages, error)`: итератор `GetHistory(...).BatchSize(100).Iter()`, стоп по
+  `date < since`, `reverse` в хронологию.
+- [x] M3.4 Нормализация `normalize(msg, ent)`: type-switch `*tg.Message` (сервисные →
+  skip); автор из `FromID`+`Entities` (пост канала → пусто); `mediaTag`/`documentTag` —
+  пометка по типу (`[photo]`/`[video]`/`[voice]`/`[sticker]`/…), webpage без метки.
+- [x] M3.5 Тип `Message{Author, Time time.Time, Text}` + `ChatMessages{Title, Messages}`.
+  Юнит-тесты `mediaTag`/`normalize`/`reverse` (ADR-7); сетевой `FetchWindow` не юнитим.
+- [x] M3.6 `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt` — зелёные.
 
 ## M4 — LLM-провайдер (Claude)  `[ ]`
 
@@ -113,8 +117,10 @@
 
 ## M8 — Документация и финал  `[ ]`
 
-- [ ] M8.1 `README.md` — пошагово для Deployer'а (template→secrets→codespaces login→
-  config→test→go live), таблица Secrets, заметки про IP/60-дней/приватность.
+- [~] M8.1 `README.md` (EN, основной) + `README.ru.md` — двуязычно. Готов раздел
+  **подключения**: template→api_id/hash→Codespaces login→session в Secret, таблица
+  connection-секретов, заметка про `SVODKA_`-префикс, privacy. Остальное (config→test→
+  go live, IP/60-дней) дописать по мере закрытия M4–M7.
 - [ ] M8.2 Финальные `go build ./...`, `go vet ./...`, `gofmt`.
 - [ ] M8.3 Прогон чек-листа критериев приёмки (см. requirements §7), что доступно без
   личных кредов (сборка/vet); функциональное — инструкцией пользователю.
