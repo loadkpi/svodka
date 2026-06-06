@@ -32,6 +32,9 @@ type Settings struct {
 	Timezone        string   `yaml:"timezone"`
 	Model           string   `yaml:"model"`
 	MaxOutputTokens int      `yaml:"max_output_tokens"`
+	// ExtraInstructions is optional free-text guidance appended to the digest
+	// prompt (tone, structure, what to emphasize). Empty = default behavior.
+	ExtraInstructions string `yaml:"extra_instructions"`
 }
 
 // Secrets holds credentials and runtime flags sourced from the environment.

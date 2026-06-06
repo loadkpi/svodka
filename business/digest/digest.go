@@ -34,6 +34,9 @@ type Options struct {
 	Model          string
 	MaxTokens      int
 	ThresholdChars int
+	// ExtraInstructions is the deployer's free-text customization, appended to
+	// the final-output prompts (single/reduce). Empty = default behavior.
+	ExtraInstructions string
 }
 
 // Usage aggregates token accounting across every LLM call Build made (one for a
@@ -81,7 +84,7 @@ func Build(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, o
 // single summarizes the whole day in one call.
 func single(ctx context.Context, p llm.Provider, userText string, opts Options) (string, Usage, error) {
 	r, err := p.Summarize(ctx, llm.Input{
-		System:    singleSystem(opts.OutputLang),
+		System:    singleSystem(opts.OutputLang, opts.ExtraInstructions),
 		User:      userText,
 		Model:     opts.Model,
 		MaxTokens: opts.MaxTokens,
@@ -131,7 +134,7 @@ func mapReduce(ctx context.Context, p llm.Provider, chats []telegram.ChatMessage
 	}
 
 	r, err := p.Summarize(ctx, llm.Input{
-		System:    reduceSystem(opts.OutputLang),
+		System:    reduceSystem(opts.OutputLang, opts.ExtraInstructions),
 		User:      reduced,
 		Model:     opts.Model,
 		MaxTokens: opts.MaxTokens,

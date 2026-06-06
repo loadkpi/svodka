@@ -123,7 +123,7 @@ func TestBuildSinglePass(t *testing.T) {
 	if len(fp.calls) != 1 {
 		t.Fatalf("expected exactly 1 call, got %d", len(fp.calls))
 	}
-	if fp.calls[0].System != singleSystem("ru") {
+	if fp.calls[0].System != singleSystem("ru", "") {
 		t.Fatalf("single-pass should use the single system prompt")
 	}
 	if fp.calls[0].Model != "m" || fp.calls[0].MaxTokens != 100 {
@@ -153,7 +153,7 @@ func TestBuildMapReduce(t *testing.T) {
 			t.Fatalf("map call %d system mismatch: caching needs identical system", i)
 		}
 	}
-	if fp.calls[2].System != reduceSystem("en") {
+	if fp.calls[2].System != reduceSystem("en", "") {
 		t.Fatalf("last call should be the reduce step")
 	}
 	// Reduce input must carry both chat titles assembled from map outputs.
@@ -229,7 +229,7 @@ func TestBuildAggregatesUsageMapReduce(t *testing.T) {
 	// 2 map calls + 1 reduce; tokens must sum and Truncated must OR across calls.
 	fp := &fakeProvider{reply: func(in llm.Input) (llm.Result, error) {
 		// Only the reduce step truncates here.
-		truncated := in.System == reduceSystem("en")
+		truncated := in.System == reduceSystem("en", "")
 		return llm.Result{Text: "bullets", InputTokens: 10, OutputTokens: 4, Truncated: truncated}, nil
 	}}
 	opts := Options{OutputLang: "en", Location: time.UTC, ThresholdChars: 1}
@@ -243,5 +243,46 @@ func TestBuildAggregatesUsageMapReduce(t *testing.T) {
 	}
 	if !usage.Truncated {
 		t.Fatalf("Truncated should be true when any call (here reduce) truncates")
+	}
+}
+
+func TestBuildExtraInstructionsSinglePass(t *testing.T) {
+	const extra = "Prefix the digest with a one-line TL;DR."
+	fp := &fakeProvider{}
+	opts := Options{OutputLang: "ru", Location: time.UTC, ExtraInstructions: extra}
+
+	if _, _, err := Build(context.Background(), fp, smallChats(), opts); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(fp.calls) != 1 {
+		t.Fatalf("expected single pass, got %d calls", len(fp.calls))
+	}
+	if !strings.Contains(fp.calls[0].System, extra) {
+		t.Fatalf("extra_instructions missing from single system prompt")
+	}
+	if fp.calls[0].System != singleSystem("ru", extra) {
+		t.Fatalf("single system should equal singleSystem(lang, extra)")
+	}
+}
+
+func TestBuildExtraInstructionsMapReduceOnlyFinal(t *testing.T) {
+	const extra = "Group items by topic across chats."
+	fp := &fakeProvider{}
+	opts := Options{OutputLang: "en", Location: time.UTC, ThresholdChars: 1, ExtraInstructions: extra}
+
+	if _, _, err := Build(context.Background(), fp, smallChats(), opts); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	// Map calls (0,1) must NOT carry the extra; reduce (2) must.
+	for i := range 2 {
+		if strings.Contains(fp.calls[i].System, extra) {
+			t.Fatalf("map call %d should not include extra_instructions", i)
+		}
+		if fp.calls[i].System != mapSystem("en") {
+			t.Fatalf("map system must stay the unmodified mapSystem (byte-identity)")
+		}
+	}
+	if !strings.Contains(fp.calls[2].System, extra) {
+		t.Fatalf("reduce system must include extra_instructions")
 	}
 }

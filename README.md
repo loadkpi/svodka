@@ -74,6 +74,7 @@ here. See [`config.example.yml`](config.example.yml) for a documented example.
 | `timezone` | `"UTC"` | IANA timezone for time wording in the digest (the example uses `Europe/Belgrade`). |
 | `model` | `"claude-sonnet-4-6"` | Anthropic model id (cheaper ↔ better): `claude-haiku-4-5` (cheapest/fastest, fine for most digests) · `claude-sonnet-4-6` (balanced) · `claude-opus-4-8` (highest quality). |
 | `max_output_tokens` | `2000` | Output token budget for the summary. |
+| `extra_instructions` | `""` | Optional free-text guidance appended to the digest prompt (tone, structure, what to emphasize). Empty = default; Telegram formatting rules still win. |
 
 ## Secrets
 

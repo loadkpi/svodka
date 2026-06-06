@@ -29,3 +29,8 @@ timezone: "Europe/Belgrade"
 model: "claude-sonnet-4-6"
 # Output token budget for the summary.
 max_output_tokens: 2000
+
+# Optional free-text instructions appended to the digest prompt (tone, structure,
+# what to emphasize). Leave empty/omitted for default behavior. The Telegram
+# formatting rules (plain text, bullets) still take precedence.
+# extra_instructions: "Start with a one-line TL;DR, then group items by topic."

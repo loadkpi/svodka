@@ -21,3 +21,7 @@ timezone: "UTC"
 #   claude-opus-4-8    - highest quality, most expensive
 model: "claude-sonnet-4-6"
 max_output_tokens: 2000
+
+# Optional free-text instructions appended to the digest prompt (tone, structure,
+# what to emphasize). Leave empty/omitted for default behavior.
+# extra_instructions: "Start with a one-line TL;DR, then group items by topic."

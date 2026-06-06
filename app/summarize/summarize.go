@@ -51,10 +51,11 @@ func Run(ctx context.Context, api *tg.Client, d Deps) error {
 
 	llmStart := time.Now()
 	text, usage, err := digest.Build(ctx, d.Provider, chats, digest.Options{
-		OutputLang: d.Cfg.OutputLang,
-		Location:   loc,
-		Model:      d.Cfg.Model,
-		MaxTokens:  d.Cfg.MaxOutputTokens,
+		OutputLang:        d.Cfg.OutputLang,
+		Location:          loc,
+		Model:             d.Cfg.Model,
+		MaxTokens:         d.Cfg.MaxOutputTokens,
+		ExtraInstructions: d.Cfg.ExtraInstructions,
 	})
 	if err != nil {
 		return fmt.Errorf("build digest: %w", err)

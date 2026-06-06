@@ -164,22 +164,24 @@
 Не входят в v1-scope; дизайн-развилки разобрать ДО кода (working style). Тесты — только
 на чистую логику (ADR-7).
 
-## M9 — Настраиваемый промпт (`extra_instructions`)  `[ ]`
+## M9 — Настраиваемый промпт (`extra_instructions`)  `[x]`
 
 Цель: править акценты/тон/состав вывода без перекомпиляции — свободный текст из конфига,
-дописываемый к системному промпту. (Сейчас промпты захардкожены в `business/digest/prompt.go`,
-параметризован только `output_lang`.)
+дописываемый к системному промпту. **Область (решение):** только **финальный вывод**
+(single + reduce), НЕ map — иначе «будь краток» пересжимает промежуточные саммари до reduce;
+бонус — map-система остаётся байт-идентичной (prompt cache, ADR-10). Формат-правила Telegram
+в приоритете над extra.
 
-- [ ] M9.1 `config`: поле `ExtraInstructions string` в `Settings` (yaml `extra_instructions`),
-  дефолт `""` (пусто = текущее поведение). Без валидации (свободный текст).
-- [ ] M9.2 `business/digest/prompt.go`: дописывать `extra` единым хвостом во все три системных
-  промпта (single/map/reduce) после `formatRules`. Сохранить байт-идентичность map-системы
-  в пределах прогона (строится один раз → prompt cache, ADR-9/10).
-- [ ] M9.3 Проброс значения: `summarize.Run` → `digest.Options.ExtraInstructions` → `prompt.go`.
-- [ ] M9.4 Тесты (чистые): extra-текст присутствует в single/map/reduce-системах; пустое
-  значение не меняет вывод (инвариант). Обновить `config.example.yml` (закомментированный пример).
-- [ ] M9.5 README (EN+RU): строка в таблице настроек. ADR, вероятно, не нужен (локальная мелочь).
-- [ ] M9.6 `go build/vet/test ./...`, `gofmt -l .` — зелёные.
+- [x] M9.1 `config`: поле `ExtraInstructions string` в `Settings` (yaml `extra_instructions`),
+  дефолт `""` (пусто = текущее поведение). Без валидации.
+- [x] M9.2 `business/digest/prompt.go`: helper `withExtra(base, extra)` дописывает extra в
+  хвост `singleSystem`/`reduceSystem` (после `formatRules`); пусто → `base` без изменений.
+  `mapSystem` не трогаем (с комментарием почему).
+- [x] M9.3 Проброс: `summarize.Run` → `digest.Options.ExtraInstructions` → `prompt.go`.
+- [x] M9.4 Тесты: extra в single и в reduce, и НЕ в map (+ map-система == `mapSystem` byte-identity);
+  пустое значение — инвариант покрыт существующими `singleSystem("ru","")`/`reduceSystem(...,"")`.
+- [x] M9.5 README (EN+RU) — строка в таблице; `config.yml`/`config.example.yml` — закомментированный пример.
+- [x] M9.6 `go build/vet/test ./...`, `gofmt -l .` — зелёные.
 
 ## M10 — Логирование расхода токенов + обрыв вывода  `[x]`
 
