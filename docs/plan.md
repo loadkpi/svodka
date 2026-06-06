@@ -91,14 +91,25 @@
 - [x] M4.4 `go build`/`vet`/`test`/`gofmt` — зелёные. `claude_test.go` — юнит `extractText`
   (пустой/один/несколько text-блоков, thinking игнорируется) через `json.Unmarshal` (ADR-7).
 
-## M5 — Формирование дайджеста  `[ ]`
+## M5 — Формирование дайджеста  `[x]`
 
-- [ ] M5.1 `business/digest/digest.go` — system-промпт (язык `output_lang`, структура).
-- [ ] M5.2 Сериализация сообщений в компактный user-текст (по чатам, с автором/временем).
-- [ ] M5.3 Оценка объёма → выбор стратегии: один вызов vs map-reduce.
-- [ ] M5.4 Map: саммари по чату; Reduce: финальная склейка в дайджест.
-- [ ] M5.5 Форматирование под Telegram (заголовки/маркеры, без хрупкого markdown).
-- [ ] M5.6 `go build ./...`, `go vet ./...`.
+- [x] M5.1 `business/digest/prompt.go` — system-промпты (single/map/reduce), параметр
+  `output_lang` (ISO 639-1), общий `formatRules`, структура «по чатам». `map`-промпт
+  собирается один раз и переиспользуется байт-в-байт между map-вызовами (prompt cache).
+- [x] M5.2 `business/digest/serialize.go` — `serializeChat`/`serializeAll`: компактный
+  user-текст `## Title` + `[HH:MM] Author: text` (автор пуст для постов канала), время
+  абсолютное в `Location` (из `Timezone`). Чистые функции.
+- [x] M5.3 `useMapReduce(userText, threshold)` — порог по символам (rune count,
+  `defaultThresholdChars=16000`, ~4 символа/токен). Чистая, table-тест.
+- [x] M5.4 `Build(ctx, llm.Provider, []telegram.ChatMessages, Options)` — single-проход
+  ниже порога; map (саммари по чату) + reduce (склейка) выше. Пустой map-вывод чата
+  выкидывается из reduce; ошибки оборачиваются по индексу чата (без контента, NFR-2).
+  `digest.Build` принимает `Provider` параметром → тест с фейком (ADR-7).
+- [x] M5.5 Форматирование под Telegram задаётся `formatRules` (plain text, `- ` буллеты,
+  без `#`/таблиц/код-фенсов); финальная склейка в reduce/single, `TrimSpace` на выходе.
+- [x] M5.6 `go build`/`vet`/`test`/`gofmt` — зелёные. `digest_test.go`: `serializeChat`
+  (+timezone), `serializeAll`, `useMapReduce` (table), `Build` (single/map-reduce/пустой
+  вход/пропуск пустого map-вывода/проброс ошибки/инвариант идентичного map-system).
 
 ## M6 — Оркестрация + отправка  `[ ]`
 
