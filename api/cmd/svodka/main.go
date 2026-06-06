@@ -1,6 +1,5 @@
 // svodka is the daily digest job: load config, connect to Telegram, summarize
-// recent messages with Claude, and post the digest. In M1 it only verifies
-// that the session works by calling Auth().Status and logging the user id.
+// recent messages with Claude, and post the digest to the target chat.
 package main
 
 import (
@@ -13,6 +12,8 @@ import (
 
 	"github.com/gotd/td/tg"
 
+	"svodka/app/summarize"
+	"svodka/business/llm"
 	"svodka/business/telegram"
 	"svodka/config"
 	"svodka/foundation/logger"
@@ -49,7 +50,7 @@ func run(ctx context.Context, log *logger.Logger) error {
 		return fmt.Errorf("telegram client: %w", err)
 	}
 
-	return client.Run(ctx, func(ctx context.Context, _ *tg.Client) error {
+	return client.Run(ctx, func(ctx context.Context, api *tg.Client) error {
 		status, err := client.Auth().Status(ctx)
 		if err != nil {
 			return fmt.Errorf("auth status: %w", err)
@@ -60,6 +61,11 @@ func run(ctx context.Context, log *logger.Logger) error {
 		// Log only the numeric Telegram id; usernames/names are PII-adjacent
 		// and Actions logs may be visible to others on a forked template.
 		log.Info(ctx, "telegram authorized", "user_id", status.User.GetID())
-		return nil
+
+		return summarize.Run(ctx, api, summarize.Deps{
+			Log:      log,
+			Cfg:      cfg,
+			Provider: llm.NewClaude(cfg.Anthropic.Key),
+		})
 	})
 }

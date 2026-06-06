@@ -111,32 +111,49 @@
   (+timezone), `serializeAll`, `useMapReduce` (table), `Build` (single/map-reduce/пустой
   вход/пропуск пустого map-вывода/проброс ошибки/инвариант идентичного map-system).
 
-## M6 — Оркестрация + отправка  `[ ]`
+## M6 — Оркестрация + отправка  `[x]`
 
-- [ ] M6.1 `business/telegram/send.go` — `Send(ctx, target, text)`; `me`→`Self()`,
-  иначе `Resolve/To`; сплит >4096 на части.
-- [ ] M6.2 `app/summarize/summarize.go` — `Run(ctx, deps)`: resolve+fetch по всем
-  чатам → digest.Build → send; вернуть метрики.
-- [ ] M6.3 Подключить оркестратор в `api/cmd/svodka/main.go` (вместо smoke).
-- [ ] M6.4 Логи-метрики: чатов/сообщений/символов/тайминги (без контента).
-- [ ] M6.5 `go build ./...`, `go vet ./...`.
+- [x] M6.1 `business/telegram/send.go` — `Send(ctx, api, *Resolver, target, text)`:
+  `me`→`Self()` (`isSelf`, case-insensitive), иначе `Resolver.Resolve`→`sender.To(p.Input)`;
+  сплит >4096 рун через чистый `splitMessage` (режет по последнему `\n` в окне, иначе
+  hard-cut). Юнит-тесты `splitMessage`/`isSelf` (ADR-7).
+- [x] M6.2 `app/summarize/summarize.go` — `Run(ctx, api, Deps{Log,Cfg,Provider})`:
+  `LoadLocation(Timezone)` → `windowStart(now,WindowHours)` → один `NewResolver` на запуск →
+  `collect` (resolve+FetchWindow по чатам) → `digest.Build` → `telegram.Send`. Тонкий,
+  сетевой (не юнитим); чистые хелперы — в `helpers.go` (`windowStart`, `chatChars`,
+  `runeLen`, `stats`), с тестами. Толерантность к чатам и пустому дайджесту — ADR-11.
+- [x] M6.3 Подключён в `api/cmd/svodka/main.go`: внутри `client.Run` после auth-check
+  → `summarize.Run(ctx, api, Deps{Provider: llm.NewClaude(key)})`.
+- [x] M6.4 Логи-метрики (counts only, NFR-2): `chats_total/ok/failed`, `messages`, `chars`,
+  `digest_chars`, тайминги `fetch_ms/llm_ms/send_ms/total_ms`. Сбой чата логируется по
+  `chat_index` (не по ссылке). Контент/секреты не логируются.
+- [x] M6.5 `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt -l .` — зелёные.
 
-## M7 — GitHub-обвязка  `[ ]`
+## M7 — GitHub-обвязка  `[~]`
 
-- [ ] M7.1 `.github/workflows/daily.yml` — `schedule` cron + `workflow_dispatch`;
-  `setup-go`; `go run ./api/cmd/svodka`; env = Secrets; `permissions: contents: read`.
-- [ ] M7.2 `.devcontainer/devcontainer.json` — образ Go + наличие `gh` (для login).
-- [ ] M7.3 Пометить репозиторий как template (инструкция в README; галочка делается в UI).
+- [x] M7.1 `.github/workflows/daily.yml` — `schedule` cron `0 6 * * *` (06:00 UTC) +
+  `workflow_dispatch`; `actions/checkout@v6` + `actions/setup-go@v6`
+  (`go-version-file: go.mod`, кэш дефолтный); `go run ./api/cmd/svodka`;
+  `permissions: contents: read`; `timeout-minutes: 10`. Env — 4 секрета
+  (`SVODKA_TELEGRAM_API_ID/API_HASH/SESSION`, `SVODKA_ANTHROPIC_KEY`); `SVODKA_CONFIG`
+  не секрет, а путь к `config.yml` (ADR-12).
+- [x] M7.2 `.devcontainer/devcontainer.json` — образ `mcr.microsoft.com/devcontainers/go:1.25`
+  + фича `ghcr.io/devcontainers/features/github-cli:1` (gh для login).
+- [~] M7.3 Пометить репозиторий как template — действие владельца в UI
+  (Settings → Template repository); инструкция Deployer'у — в README (M8.1).
 
-## M8 — Документация и финал  `[ ]`
+## M8 — Документация и финал  `[x]`
 
-- [~] M8.1 `README.md` (EN, основной) + `README.ru.md` — двуязычно. Готов раздел
-  **подключения**: template→api_id/hash→Codespaces login→session в Secret, таблица
-  connection-секретов, заметка про `SVODKA_`-префикс, privacy. Остальное (config→test→
-  go live, IP/60-дней) дописать по мере закрытия M4–M7.
-- [ ] M8.2 Финальные `go build ./...`, `go vet ./...`, `gofmt`.
-- [ ] M8.3 Прогон чек-листа критериев приёмки (см. requirements §7), что доступно без
-  личных кредов (сборка/vet); функциональное — инструкцией пользователю.
+- [x] M8.1 `README.md` (EN, основной) + `README.ru.md` — двуязычно, параллельно.
+  Единый deploy-поток (шаги 1-7: template→api_id/hash→Codespaces login→session→
+  Anthropic-ключ→config.yml→Run workflow тест (`target_chat: me`)→go live) + справочные
+  секции: полная таблица настроек `config.yml`, таблица секретов (4 шт.),
+  «Schedule» (UTC-cron + пересчёт, best-effort, 60 дней, смена IP/новый вход), privacy.
+- [x] M8.2 Финальные `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt -l .` — зелёные.
+- [x] M8.3 Чек-лист приёмки (requirements §7): **AC-1** (build+vet) — пройден авто;
+  **AC-2..AC-5** — функциональные, требуют личных кредов Deployer'а → покрыты
+  инструкцией в README (login→session, тест через `workflow_dispatch` с `target_chat: me`,
+  смена target на группу, чистые логи). Прогон выполняет Deployer.
 
 ---
 

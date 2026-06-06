@@ -1,0 +1,43 @@
+# Daily Telegram digest: reads the configured chats and posts a summary.
+# Runs on a schedule and can be triggered manually (Run workflow button).
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions),
+# all prefixed with SVODKA_:
+#   SVODKA_TELEGRAM_API_ID    - api_id from my.telegram.org
+#   SVODKA_TELEGRAM_API_HASH  - api_hash from my.telegram.org
+#   SVODKA_TELEGRAM_SESSION   - base64 session from `go run ./api/cmd/login`
+#   SVODKA_ANTHROPIC_KEY      - Anthropic API key
+# Non-secret settings (chats, target, timezone, ...) live in config.yml,
+# which you edit directly in the web UI.
+#
+# Note: a scheduled workflow is disabled after 60 days without repo activity,
+# and runner IPs change between runs, so Telegram may show a "new login".
+name: Daily digest
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC (GitHub cron is UTC; recalc from your tz)
+  workflow_dispatch:
+
+# Least privilege: the job only needs to read the checked-out repository.
+permissions:
+  contents: read
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod # single source of truth; cache is on by default
+
+      - name: Run digest
+        env:
+          SVODKA_TELEGRAM_API_ID: ${{ secrets.SVODKA_TELEGRAM_API_ID }}
+          SVODKA_TELEGRAM_API_HASH: ${{ secrets.SVODKA_TELEGRAM_API_HASH }}
+          SVODKA_TELEGRAM_SESSION: ${{ secrets.SVODKA_TELEGRAM_SESSION }}
+          SVODKA_ANTHROPIC_KEY: ${{ secrets.SVODKA_ANTHROPIC_KEY }}
+        run: go run ./api/cmd/svodka

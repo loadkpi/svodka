@@ -119,8 +119,11 @@ svodka/
   - детали и trade-offs — ADR-10.
 
 ### 4.5 `app/summarize`
-- Оркестратор: получает `config`, `telegram`, `llm`; выполняет шаги 3-5; возвращает
-  метрики (чатов, сообщений, длина дайджеста) для лога.
+- `Run(ctx, api *tg.Client, Deps{Log, Cfg, Provider})` — исполняется внутри `client.Run`;
+  выполняет шаги 3-5 (resolve+fetch всех чатов → `digest.Build` → `Send`), логирует метрики
+  (чатов ok/failed, сообщений, символов, тайминги) и возвращает `error`. Толерантен к сбою
+  отдельного чата, жёсток к LLM/`Send`, пустой дайджест не отправляет (ADR-11). Чистые
+  хелперы — `helpers.go`.
 
 ### 4.6 `api/cmd/*`
 - `svodka/main.go`: `signal.NotifyContext`; `config.Load`; `telegram.Client.Run`
@@ -185,6 +188,17 @@ max_output_tokens: 2000
   а тяжёлый граф зависимостей и так уже есть из-за `gotd`. Провайдер спрятан за интерфейсом
   `llm.Provider`, поэтому выбор транспорта локализован в `claude.go`. Модель и `max_tokens`
   берём из конфига; `cache_control` на system-блоке окупается только в map-reduce (M5).
+- **ADR-11. Оркестрация: тонкий use-case, толерантность к чатам, жёсткость к
+  публикации.** `app/summarize.Run` исполняется внутри `client.Run` (gotd требует живой
+  `*tg.Client`), зовёт конкретные `Resolve`/`FetchWindow`/`Send`/`digest.Build` напрямую —
+  слой сетевой, не юнитим (ADR-7); чистые хелперы (`windowStart`, `chatChars`) вынесены и
+  покрыты тестами. Политика сбоев: сбой resolve/fetch одного чата → warn (по индексу, не по
+  ссылке) + skip + continue (ADR-8); если упали **все** source-чаты → ошибка/exit 1 (сломан
+  конфиг или сессия); сбой LLM или `Send` → ошибка/exit 1. Пустой дайджест (нет сообщений за
+  окно, `Build`→`""`) — успех без отправки (тихие дни не шумят в целевом чате). Метрики в
+  логах — только счётчики и тайминги (NFR-2). Зависимости (`llm.Provider`, `Cfg`, `Log`)
+  внедряются через `Deps`; `Timezone→*time.Location` парсит оркестратор, в `digest` уходит
+  готовая зона.
 - **ADR-10. Дайджест: гибридная стратегия объёма, структура по чатам, абсолютное
   время, вход — `telegram.ChatMessages`.** (1) *Объём:* ниже порога — один вызов; на
   уровне/выше — map (саммари по чату) + reduce (склейка), чтобы не упираться в контекст
@@ -199,6 +213,22 @@ max_output_tokens: 2000
   `map`-system собирается один раз и переиспользуется байт-в-байт между map-вызовами, чтобы
   окупился `cache_control` (ADR-9). `llm.Provider` внедряется параметром → тест с фейком
   (ADR-7); `Timezone→*time.Location` парсит оркестратор, в `digest` приходит готовая зона.
+- **ADR-12. GitHub-обвязка (M7).** Workflow `daily.yml`: `schedule` `0 6 * * *`
+  (06:00 UTC — GitHub cron всегда в UTC; пересчёт из локали — в inline-комментарии) +
+  `workflow_dispatch`. `permissions: contents: read` (least privilege),
+  `timeout-minutes: 10` против зависших прогонов. Версия Go — `go-version-file: go.mod`
+  (единый источник правды), кэш модулей `actions/setup-go` — дефолтный (on, ключ по
+  `go.sum`). Запуск `go run ./api/cmd/svodka`; ненулевой код выхода валит step → job
+  красный (уведомления вне scope v1). Версии экшенов проверены до зашивания:
+  `actions/checkout@v6`, `actions/setup-go@v6`. В env job — только 4 секрета
+  (`SVODKA_TELEGRAM_API_ID/API_HASH/SESSION`, `SVODKA_ANTHROPIC_KEY`). **`SVODKA_CONFIG`
+  — не секрет**, а путь к `config.yml` (default `config.yml`, см. `config.go`): файл
+  коммитится в (приватный) инстанс и правится в web-UI (FR-19), workflow читает его с
+  диска после checkout — отдельного content-секрета не нужно. devcontainer:
+  `mcr.microsoft.com/devcontainers/go:1.25` (под `go.mod`) + фича
+  `ghcr.io/devcontainers/features/github-cli:1` (gh нужен `login` для `gh secret set`,
+  ADR-6). M7.3 «template» — действие владельца в UI (Settings → Template repository);
+  инструкция — в README (M8).
 - **ADR-8. Резолв пиров: имя/ссылка → manager.Resolve; числовой id → ленивый скан
   диалогов.** Голый числовой id нельзя резолвить через MTProto без `access_hash`,
   которого нет в конфиге. При первом числовом id один раз сканируем `query.GetDialogs`

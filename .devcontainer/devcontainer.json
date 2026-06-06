@@ -1,0 +1,14 @@
+{
+  // Codespaces environment for the one-time login (`go run ./api/cmd/login`)
+  // and for building/running svodka locally.
+  "name": "svodka",
+
+  // Official Go dev container image, pinned to match go.mod (Go 1.25).
+  "image": "mcr.microsoft.com/devcontainers/go:1.25",
+
+  "features": {
+    // gh is required by the login command to store the session as a repo
+    // secret (gh secret set SVODKA_TELEGRAM_SESSION).
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  }
+}
