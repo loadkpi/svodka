@@ -7,6 +7,11 @@ session*.txt
 .env
 .env.*
 
+# Personal config variants (config.yml stays tracked as the safe default;
+# config.example.yml stays tracked as the documented reference).
+config.*.yml
+!config.example.yml
+
 # Claude Code personal (non-shared) settings; not for the public template
 .claude/settings.local.json
 

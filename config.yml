@@ -14,5 +14,10 @@ target_chat: "me"
 window_hours: 24
 output_lang: "ru"
 timezone: "UTC"
+
+# LLM model (cheaper <-> better):
+#   claude-haiku-4-5   - cheapest & fastest, fine for most digests
+#   claude-sonnet-4-6  - balanced quality/cost (default)
+#   claude-opus-4-8    - highest quality, most expensive
 model: "claude-sonnet-4-6"
 max_output_tokens: 2000

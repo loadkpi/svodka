@@ -72,7 +72,7 @@ here. See [`config.example.yml`](config.example.yml) for a documented example.
 | `window_hours` | `24` | How far back to read, in hours. |
 | `output_lang` | `"ru"` | Digest language (ISO 639-1, e.g. `ru`, `en`). |
 | `timezone` | `"UTC"` | IANA timezone for time wording in the digest (the example uses `Europe/Belgrade`). |
-| `model` | `"claude-sonnet-4-6"` | Anthropic model id. Use a stronger model (e.g. `claude-opus-4-8`) for higher quality. |
+| `model` | `"claude-sonnet-4-6"` | Anthropic model id (cheaper ↔ better): `claude-haiku-4-5` (cheapest/fastest, fine for most digests) · `claude-sonnet-4-6` (balanced) · `claude-opus-4-8` (highest quality). |
 | `max_output_tokens` | `2000` | Output token budget for the summary. |
 
 ## Secrets

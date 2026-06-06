@@ -228,7 +228,12 @@ max_output_tokens: 2000
   `mcr.microsoft.com/devcontainers/go:1.25` (под `go.mod`) + фича
   `ghcr.io/devcontainers/features/github-cli:1` (gh нужен `login` для `gh secret set`,
   ADR-6). M7.3 «template» — действие владельца в UI (Settings → Template repository);
-  инструкция — в README (M8).
+  инструкция — в README (M8). **Локальная разработка Maintainer'а:** committed
+  `config.yml` держим безопасным плейсхолдером (`source_chats: []`); реальные чаты — в
+  gitignored `config.local.yml` (запуск `SVODKA_CONFIG=config.local.yml`/`--config`).
+  `.gitignore` ловит `config.*.yml` с исключением `!config.example.yml`; сам `config.yml`
+  паттерн не задевает и остаётся в git — он нужен «Use this template» (копируются только
+  закоммиченные файлы) и для чтения workflow с диска после checkout.
 - **ADR-8. Резолв пиров: имя/ссылка → manager.Resolve; числовой id → ленивый скан
   диалогов.** Голый числовой id нельзя резолвить через MTProto без `access_hash`,
   которого нет в конфиге. При первом числовом id один раз сканируем `query.GetDialogs`

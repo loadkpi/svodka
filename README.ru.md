@@ -72,7 +72,7 @@ svodka заходит в Telegram **под вами** (юзербот на MTPro
 | `window_hours` | `24` | На сколько часов назад читать. |
 | `output_lang` | `"ru"` | Язык дайджеста (ISO 639-1, напр. `ru`, `en`). |
 | `timezone` | `"UTC"` | IANA-таймзона для времени в дайджесте (в примере — `Europe/Belgrade`). |
-| `model` | `"claude-sonnet-4-6"` | Id модели Anthropic. Для лучшего качества — модель помощнее (напр. `claude-opus-4-8`). |
+| `model` | `"claude-sonnet-4-6"` | Id модели Anthropic (дешевле ↔ лучше): `claude-haiku-4-5` (дешевле/быстрее, ок для большинства сводок) · `claude-sonnet-4-6` (баланс) · `claude-opus-4-8` (макс. качество). |
 | `max_output_tokens` | `2000` | Бюджет токенов на вывод саммари. |
 
 ## Секреты
