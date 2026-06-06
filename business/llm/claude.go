@@ -21,8 +21,9 @@ func NewClaude(apiKey string) *Claude {
 	return &Claude{client: anthropic.NewClient(option.WithAPIKey(apiKey))}
 }
 
-// Summarize sends one request and returns the concatenated text output.
-func (c *Claude) Summarize(ctx context.Context, in Input) (string, error) {
+// Summarize sends one request and returns the concatenated text output plus
+// token usage and whether the output was cut off at MaxTokens.
+func (c *Claude) Summarize(ctx context.Context, in Input) (Result, error) {
 	params := anthropic.MessageNewParams{
 		Model:     in.Model,
 		MaxTokens: int64(in.MaxTokens),
@@ -41,14 +42,19 @@ func (c *Claude) Summarize(ctx context.Context, in Input) (string, error) {
 
 	resp, err := c.client.Messages.New(ctx, params)
 	if err != nil {
-		return "", fmt.Errorf("claude messages: %w", err)
+		return Result{}, fmt.Errorf("claude messages: %w", err)
 	}
 
 	text := extractText(resp)
 	if text == "" {
-		return "", errors.New("claude returned no text content")
+		return Result{}, errors.New("claude returned no text content")
 	}
-	return text, nil
+	return Result{
+		Text:         text,
+		InputTokens:  int(resp.Usage.InputTokens),
+		OutputTokens: int(resp.Usage.OutputTokens),
+		Truncated:    resp.StopReason == anthropic.StopReasonMaxTokens,
+	}, nil
 }
 
 // extractText concatenates the text blocks of a response, ignoring any

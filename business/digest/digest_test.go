@@ -15,15 +15,15 @@ import (
 // tested without touching the network (ADR-7).
 type fakeProvider struct {
 	calls []llm.Input
-	reply func(llm.Input) (string, error)
+	reply func(llm.Input) (llm.Result, error)
 }
 
-func (f *fakeProvider) Summarize(_ context.Context, in llm.Input) (string, error) {
+func (f *fakeProvider) Summarize(_ context.Context, in llm.Input) (llm.Result, error) {
 	f.calls = append(f.calls, in)
 	if f.reply != nil {
 		return f.reply(in)
 	}
-	return "ok", nil
+	return llm.Result{Text: "ok"}, nil
 }
 
 func msg(author, text string, t time.Time) telegram.Message {
@@ -110,10 +110,10 @@ func smallChats() []telegram.ChatMessages {
 }
 
 func TestBuildSinglePass(t *testing.T) {
-	fp := &fakeProvider{reply: func(llm.Input) (string, error) { return "  digest  ", nil }}
+	fp := &fakeProvider{reply: func(llm.Input) (llm.Result, error) { return llm.Result{Text: "  digest  "}, nil }}
 	opts := Options{OutputLang: "ru", Location: time.UTC, Model: "m", MaxTokens: 100}
 
-	out, err := Build(context.Background(), fp, smallChats(), opts)
+	out, _, err := Build(context.Background(), fp, smallChats(), opts)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestBuildMapReduce(t *testing.T) {
 	opts := Options{OutputLang: "en", Location: time.UTC, Model: "m", MaxTokens: 100, ThresholdChars: 1}
 
 	chats := smallChats()
-	if _, err := Build(context.Background(), fp, chats, opts); err != nil {
+	if _, _, err := Build(context.Background(), fp, chats, opts); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 
@@ -164,15 +164,15 @@ func TestBuildMapReduce(t *testing.T) {
 
 func TestBuildMapReduceSkipsEmptyMapOutput(t *testing.T) {
 	// A map step that returns blank for chat B should be dropped from reduce input.
-	fp := &fakeProvider{reply: func(in llm.Input) (string, error) {
+	fp := &fakeProvider{reply: func(in llm.Input) (llm.Result, error) {
 		if in.System == mapSystem("en") && strings.Contains(in.User, "## B") {
-			return "   ", nil
+			return llm.Result{Text: "   "}, nil
 		}
-		return "bullets", nil
+		return llm.Result{Text: "bullets"}, nil
 	}}
 	opts := Options{OutputLang: "en", Location: time.UTC, ThresholdChars: 1}
 
-	if _, err := Build(context.Background(), fp, smallChats(), opts); err != nil {
+	if _, _, err := Build(context.Background(), fp, smallChats(), opts); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	reduce := fp.calls[len(fp.calls)-1]
@@ -186,7 +186,7 @@ func TestBuildEmptyInput(t *testing.T) {
 	// Chats present but all empty -> nothing to summarize, no provider calls.
 	chats := []telegram.ChatMessages{{Title: "A"}, {Title: "B"}}
 
-	out, err := Build(context.Background(), fp, chats, Options{OutputLang: "ru"})
+	out, _, err := Build(context.Background(), fp, chats, Options{OutputLang: "ru"})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -200,10 +200,48 @@ func TestBuildEmptyInput(t *testing.T) {
 
 func TestBuildPropagatesError(t *testing.T) {
 	wantErr := errors.New("boom")
-	fp := &fakeProvider{reply: func(llm.Input) (string, error) { return "", wantErr }}
+	fp := &fakeProvider{reply: func(llm.Input) (llm.Result, error) { return llm.Result{}, wantErr }}
 
-	_, err := Build(context.Background(), fp, smallChats(), Options{OutputLang: "ru", Location: time.UTC})
+	_, _, err := Build(context.Background(), fp, smallChats(), Options{OutputLang: "ru", Location: time.UTC})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected wrapped provider error, got %v", err)
+	}
+}
+
+func TestBuildAggregatesUsageSinglePass(t *testing.T) {
+	fp := &fakeProvider{reply: func(llm.Input) (llm.Result, error) {
+		return llm.Result{Text: "digest", InputTokens: 30, OutputTokens: 12, Truncated: true}, nil
+	}}
+
+	_, usage, err := Build(context.Background(), fp, smallChats(), Options{OutputLang: "ru", Location: time.UTC})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if usage.InputTokens != 30 || usage.OutputTokens != 12 {
+		t.Fatalf("single-pass usage = %+v, want in=30 out=12", usage)
+	}
+	if !usage.Truncated {
+		t.Fatalf("Truncated should propagate from the only call")
+	}
+}
+
+func TestBuildAggregatesUsageMapReduce(t *testing.T) {
+	// 2 map calls + 1 reduce; tokens must sum and Truncated must OR across calls.
+	fp := &fakeProvider{reply: func(in llm.Input) (llm.Result, error) {
+		// Only the reduce step truncates here.
+		truncated := in.System == reduceSystem("en")
+		return llm.Result{Text: "bullets", InputTokens: 10, OutputTokens: 4, Truncated: truncated}, nil
+	}}
+	opts := Options{OutputLang: "en", Location: time.UTC, ThresholdChars: 1}
+
+	_, usage, err := Build(context.Background(), fp, smallChats(), opts)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if usage.InputTokens != 30 || usage.OutputTokens != 12 {
+		t.Fatalf("map-reduce usage = %+v, want in=30 out=12 (3 calls)", usage)
+	}
+	if !usage.Truncated {
+		t.Fatalf("Truncated should be true when any call (here reduce) truncates")
 	}
 }

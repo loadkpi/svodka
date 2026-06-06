@@ -36,12 +36,30 @@ type Options struct {
 	ThresholdChars int
 }
 
-// Build produces the final digest text. It returns "" (no error) when there is
-// nothing to summarize, so the caller can skip sending an empty message.
-func Build(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, opts Options) (string, error) {
+// Usage aggregates token accounting across every LLM call Build made (one for a
+// small day, N maps + 1 reduce for a large one). Truncated is set if any call
+// stopped at MaxTokens, meaning the digest is likely cut off.
+type Usage struct {
+	InputTokens  int
+	OutputTokens int
+	Truncated    bool
+}
+
+func (u *Usage) add(r llm.Result) {
+	u.InputTokens += r.InputTokens
+	u.OutputTokens += r.OutputTokens
+	if r.Truncated {
+		u.Truncated = true
+	}
+}
+
+// Build produces the final digest text plus token usage. It returns "" (no
+// error) when there is nothing to summarize, so the caller can skip sending an
+// empty message.
+func Build(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, opts Options) (string, Usage, error) {
 	chats = nonEmpty(chats)
 	if len(chats) == 0 {
-		return "", nil
+		return "", Usage{}, nil
 	}
 
 	loc := opts.Location
@@ -61,28 +79,31 @@ func Build(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, o
 }
 
 // single summarizes the whole day in one call.
-func single(ctx context.Context, p llm.Provider, userText string, opts Options) (string, error) {
-	out, err := p.Summarize(ctx, llm.Input{
+func single(ctx context.Context, p llm.Provider, userText string, opts Options) (string, Usage, error) {
+	r, err := p.Summarize(ctx, llm.Input{
 		System:    singleSystem(opts.OutputLang),
 		User:      userText,
 		Model:     opts.Model,
 		MaxTokens: opts.MaxTokens,
 	})
 	if err != nil {
-		return "", fmt.Errorf("digest single-pass: %w", err)
+		return "", Usage{}, fmt.Errorf("digest single-pass: %w", err)
 	}
-	return strings.TrimSpace(out), nil
+	var u Usage
+	u.add(r)
+	return strings.TrimSpace(r.Text), u, nil
 }
 
 // mapReduce summarizes each chat on its own (map) and then stitches the per-chat
 // summaries into the final digest (reduce). The map system prompt is built once
 // and reused byte-for-byte across every map call so prompt caching can kick in.
-func mapReduce(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, opts Options, loc *time.Location) (string, error) {
+func mapReduce(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, opts Options, loc *time.Location) (string, Usage, error) {
 	sys := mapSystem(opts.OutputLang)
 
+	var u Usage
 	var b strings.Builder
 	for i, c := range chats {
-		out, err := p.Summarize(ctx, llm.Input{
+		r, err := p.Summarize(ctx, llm.Input{
 			System:    sys,
 			User:      serializeChat(c, loc),
 			Model:     opts.Model,
@@ -90,9 +111,10 @@ func mapReduce(ctx context.Context, p llm.Provider, chats []telegram.ChatMessage
 		})
 		if err != nil {
 			// Index, not title: error text must not carry chat content (NFR-2).
-			return "", fmt.Errorf("digest map chat %d: %w", i, err)
+			return "", Usage{}, fmt.Errorf("digest map chat %d: %w", i, err)
 		}
-		out = strings.TrimSpace(out)
+		u.add(r)
+		out := strings.TrimSpace(r.Text)
 		if out == "" {
 			continue
 		}
@@ -105,19 +127,20 @@ func mapReduce(ctx context.Context, p llm.Provider, chats []telegram.ChatMessage
 
 	reduced := strings.TrimSpace(b.String())
 	if reduced == "" {
-		return "", nil
+		return "", u, nil
 	}
 
-	out, err := p.Summarize(ctx, llm.Input{
+	r, err := p.Summarize(ctx, llm.Input{
 		System:    reduceSystem(opts.OutputLang),
 		User:      reduced,
 		Model:     opts.Model,
 		MaxTokens: opts.MaxTokens,
 	})
 	if err != nil {
-		return "", fmt.Errorf("digest reduce: %w", err)
+		return "", Usage{}, fmt.Errorf("digest reduce: %w", err)
 	}
-	return strings.TrimSpace(out), nil
+	u.add(r)
+	return strings.TrimSpace(r.Text), u, nil
 }
 
 // nonEmpty drops chats that have no messages, without mutating the input.

@@ -213,6 +213,17 @@ max_output_tokens: 2000
   `map`-system собирается один раз и переиспользуется байт-в-байт между map-вызовами, чтобы
   окупился `cache_control` (ADR-9). `llm.Provider` внедряется параметром → тест с фейком
   (ADR-7); `Timezone→*time.Location` парсит оркестратор, в `digest` приходит готовая зона.
+- **ADR-13. `llm.Provider` возвращает `Result` (токены + truncated), не голую строку (M10).**
+  Контракт сменён на `Summarize(ctx, Input) (Result, error)`, где
+  `Result{Text; InputTokens, OutputTokens int; Truncated bool}`. `claude.go` заполняет токены
+  из `resp.Usage` и `Truncated = resp.StopReason == max_tokens`. `digest.Build` суммирует
+  `Usage` по всем вызовам (single или N map + reduce; `Truncated` = OR) и возвращает
+  `(string, Usage, error)`. `summarize.Run` логирует `tokens_in/tokens_out` и шлёт WARN при
+  обрыве. **Зачем:** молчаливый обрыв на `max_output_tokens` был невидим в логах (модель
+  останавливается на полуслове, а мы возвращали усечённый текст как валидный) — теперь это
+  видно, плюс появилась видимость стоимости. Выбран вариант «сменить сигнатуру» (а не добавлять
+  отдельный метод): один источник результата, фейк-`Provider` в тестах тривиально обновляется.
+  В лог идут только счётчики/флаг, без контента (NFR-2).
 - **ADR-12. GitHub-обвязка (M7).** Workflow `daily.yml`: `schedule` `0 6 * * *`
   (06:00 UTC — GitHub cron всегда в UTC; пересчёт из локали — в inline-комментарии) +
   `workflow_dispatch`. `permissions: contents: read` (least privilege),

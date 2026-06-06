@@ -181,22 +181,23 @@
 - [ ] M9.5 README (EN+RU): строка в таблице настроек. ADR, вероятно, не нужен (локальная мелочь).
 - [ ] M9.6 `go build/vet/test ./...`, `gofmt -l .` — зелёные.
 
-## M10 — Логирование расхода токенов  `[ ]`
+## M10 — Логирование расхода токенов + обрыв вывода  `[x]`
 
-Цель: видеть токены за прогон (оценка стоимости). Сейчас `Claude.Summarize` выбрасывает
-`resp.Usage`. Метрики — только счётчики, без контента (NFR-2).
+Цель: видеть токены за прогон (стоимость) **и** ловить молчаливый обрыв на
+`max_output_tokens` (он был невидим — повод сделать сейчас). Метрики — только счётчики,
+без контента (NFR-2). Решение — ADR-13.
 
-- [ ] M10.1 `business/llm`: расширить контракт `Provider` — возвращать `Result{Text string;
-  InTokens, OutTokens int}` (вместо голой строки). **Развилка к обсуждению:** менять сигнатуру
-  vs добавить отдельный метод — фиксируем как ADR-13 (меняется публичный интерфейс `llm`).
-- [ ] M10.2 `claude.go`: заполнять токены из `resp.Usage` (Input/Output; опц. cache read/creation).
-- [ ] M10.3 `digest.Build`: суммировать токены по всем вызовам (single и map-reduce), вернуть
-  агрегат наружу (расширить возврат).
-- [ ] M10.4 `summarize.Run`: дописать в финальный лог `tokens_in`/`tokens_out` рядом с
-  `digest_chars`/`llm_ms`.
-- [ ] M10.5 Тесты: обновить фейк `Provider` (отдаёт `Result` с токенами), проверить суммирование
-  в `Build`; поправить существующие тесты под новую сигнатуру.
-- [ ] M10.6 `go build/vet/test ./...`, `gofmt -l .` — зелёные. ADR-13 (контракт `Provider`).
+- [x] M10.1 `business/llm`: контракт `Provider` → `Summarize(ctx, Input) (Result, error)`,
+  `Result{Text, InputTokens, OutputTokens int; Truncated bool}` (ADR-13).
+- [x] M10.2 `claude.go`: заполняет из `resp.Usage` (Input/Output) и `Truncated =
+  resp.StopReason == max_tokens`.
+- [x] M10.3 `digest.Build`: суммирует `Usage` по всем вызовам (single или N map + reduce;
+  `Truncated` = OR), возвращает `(string, Usage, error)`.
+- [x] M10.4 `summarize.Run`: лог `tokens_in`/`tokens_out` рядом с `digest_chars`/`llm_ms`;
+  WARN «digest truncated at max_output_tokens» при обрыве.
+- [x] M10.5 Тесты: фейк `Provider` отдаёт `Result`; добавлены тесты агрегации `Usage`
+  (single/map-reduce + `Truncated`); существующие тесты обновлены под сигнатуру.
+- [x] M10.6 `go build/vet/test ./...`, `gofmt -l .` — зелёные.
 
 ## M11 — CLI-оверрайды настроек для локального запуска  `[ ]`
 
@@ -320,6 +321,10 @@ GitHub (документировать, 0 кода) vs активный «при
 - Метрики прогона в `$GITHUB_STEP_SUMMARY` (UI Actions; только счётчики, NFR-2 ок).
 - Док про ротацию/отзыв session («завершить сеансы» в Telegram при утечке).
 - Фильтры источников: пропускать ботов/авторов/низкоактивные чаты.
+- Калибровка порога map-reduce под язык. `defaultThresholdChars=16000` заложен из ~4 символа/
+  токен, но для кириллицы реально ~1.6 символа/токен (наблюдение: 10194 символа → 6226 токенов),
+  т.е. порог по символам для русского грубоват. Варианты: коэффициент по `output_lang` или
+  честный `count_tokens` перед выбором single vs map-reduce (сеть/латентность — взвесить).
 - `login` должен игнорировать `SVODKA_TELEGRAM_SESSION` из env (он всё равно минтит новую) —
   убрать грабли «битая сессия в env валит login».
   (Идея «`until` / диапазон дат» поглощена M15.)

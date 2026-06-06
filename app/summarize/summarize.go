@@ -50,7 +50,7 @@ func Run(ctx context.Context, api *tg.Client, d Deps) error {
 	}
 
 	llmStart := time.Now()
-	text, err := digest.Build(ctx, d.Provider, chats, digest.Options{
+	text, usage, err := digest.Build(ctx, d.Provider, chats, digest.Options{
 		OutputLang: d.Cfg.OutputLang,
 		Location:   loc,
 		Model:      d.Cfg.Model,
@@ -63,8 +63,15 @@ func Run(ctx context.Context, api *tg.Client, d Deps) error {
 		d.Log.Info(ctx, "no digest produced; nothing to send", "messages", st.messages)
 		return nil
 	}
+	if usage.Truncated {
+		// Output hit max_output_tokens; the digest is likely cut off mid-thought.
+		d.Log.Warn(ctx, "digest truncated at max_output_tokens; raise max_output_tokens or narrow the window",
+			"max_output_tokens", d.Cfg.MaxOutputTokens, "tokens_out", usage.OutputTokens)
+	}
 	d.Log.Info(ctx, "digest built",
-		"digest_chars", runeLen(text), "llm_ms", time.Since(llmStart).Milliseconds())
+		"digest_chars", runeLen(text),
+		"tokens_in", usage.InputTokens, "tokens_out", usage.OutputTokens,
+		"llm_ms", time.Since(llmStart).Milliseconds())
 
 	sendStart := time.Now()
 	if err := telegram.Send(ctx, api, resolver, d.Cfg.TargetChat, text); err != nil {
