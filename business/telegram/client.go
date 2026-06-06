@@ -5,7 +5,7 @@ import (
 
 	"github.com/gotd/contrib/middleware/floodwait"
 	"github.com/gotd/td/session"
-	"github.com/gotd/td/telegram"
+	gotgram "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
 
@@ -13,9 +13,10 @@ import (
 )
 
 // Client is a thin wrapper around gotd's telegram.Client that fixes the
-// project's standard options in one place.
+// project's standard options in one place. The gotd package is imported as
+// gotgram so it does not shadow this package's own name (telegram).
 type Client struct {
-	tg      *telegram.Client
+	tg      *gotgram.Client
 	storage *session.StorageMemory
 }
 
@@ -27,15 +28,15 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	opts := telegram.Options{
+	opts := gotgram.Options{
 		SessionStorage: storage,
-		Middlewares: []telegram.Middleware{
+		Middlewares: []gotgram.Middleware{
 			floodwait.NewSimpleWaiter(),
 		},
 		// Logger left nil on purpose: the gotd zap logger would otherwise
 		// pour MTProto traffic (including message data) into stderr.
 	}
-	c := telegram.NewClient(cfg.Telegram.APIID, cfg.Telegram.APIHash, opts)
+	c := gotgram.NewClient(cfg.Telegram.APIID, cfg.Telegram.APIHash, opts)
 	return &Client{tg: c, storage: storage}, nil
 }
 
@@ -47,7 +48,7 @@ func loadOrEmpty(ctx context.Context, b64 string) (*session.StorageMemory, error
 }
 
 // Run connects to Telegram and invokes fn with the raw tg API. It is a thin
-// pass-through to (*telegram.Client).Run.
+// pass-through to (*gotgram.Client).Run.
 func (c *Client) Run(ctx context.Context, fn func(ctx context.Context, api *tg.Client) error) error {
 	return c.tg.Run(ctx, func(ctx context.Context) error {
 		return fn(ctx, c.tg.API())

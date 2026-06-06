@@ -19,6 +19,16 @@ import (
 	"svodka/foundation/logger"
 )
 
+// Per-step deadlines. These are backstops, not tuning knobs: a hung Telegram or
+// Anthropic call should surface a clear per-step error long before the workflow's
+// overall timeout kills the job with no diagnostic. The parent context (signal /
+// workflow timeout) still bounds the run as a whole.
+const (
+	chatTimeout = 2 * time.Minute // resolve + windowed history fetch for one chat
+	llmTimeout  = 5 * time.Minute // whole digest build (single, or N maps + reduce)
+	sendTimeout = 1 * time.Minute // posting the digest (possibly several parts)
+)
+
 // Deps are the orchestrator's collaborators, injected by main.
 type Deps struct {
 	Log      *logger.Logger
@@ -50,7 +60,9 @@ func Run(ctx context.Context, api *tg.Client, d Deps) error {
 	}
 
 	llmStart := time.Now()
-	text, usage, err := digest.Build(ctx, d.Provider, chats, digest.Options{
+	llmCtx, cancelLLM := context.WithTimeout(ctx, llmTimeout)
+	defer cancelLLM()
+	text, usage, err := digest.Build(llmCtx, d.Provider, chats, digest.Options{
 		OutputLang:        d.Cfg.OutputLang,
 		Location:          loc,
 		Model:             d.Cfg.Model,
@@ -75,7 +87,9 @@ func Run(ctx context.Context, api *tg.Client, d Deps) error {
 		"llm_ms", time.Since(llmStart).Milliseconds())
 
 	sendStart := time.Now()
-	if err := telegram.Send(ctx, api, resolver, d.Cfg.TargetChat, text); err != nil {
+	sendCtx, cancelSend := context.WithTimeout(ctx, sendTimeout)
+	defer cancelSend()
+	if err := telegram.Send(sendCtx, api, resolver, d.Cfg.TargetChat, text); err != nil {
 		return fmt.Errorf("send digest: %w", err)
 	}
 	d.Log.Info(ctx, "digest sent",
@@ -93,16 +107,11 @@ func collect(ctx context.Context, api *tg.Client, r *telegram.Resolver, refs []s
 	var out []telegram.ChatMessages
 
 	for i, ref := range refs {
-		p, err := r.Resolve(ctx, ref)
+		cm, err := fetchChat(ctx, api, r, ref, since)
 		if err != nil {
 			st.failed++
-			log.Warn(ctx, "resolve failed; skipping chat", "chat_index", i, "err", err.Error())
-			continue
-		}
-		cm, err := telegram.FetchWindow(ctx, api, p, since)
-		if err != nil {
-			st.failed++
-			log.Warn(ctx, "fetch failed; skipping chat", "chat_index", i, "err", err.Error())
+			// Index, not ref: the warning must not advertise which chats are tracked.
+			log.Warn(ctx, "resolve/fetch failed; skipping chat", "chat_index", i, "err", err.Error())
 			continue
 		}
 		st.ok++
@@ -111,4 +120,21 @@ func collect(ctx context.Context, api *tg.Client, r *telegram.Resolver, refs []s
 		out = append(out, cm)
 	}
 	return out, st
+}
+
+// fetchChat resolves one chat reference and reads its window under a per-chat
+// deadline, so a single slow chat cannot stall the whole collect loop.
+func fetchChat(ctx context.Context, api *tg.Client, r *telegram.Resolver, ref string, since time.Time) (telegram.ChatMessages, error) {
+	ctx, cancel := context.WithTimeout(ctx, chatTimeout)
+	defer cancel()
+
+	p, err := r.Resolve(ctx, ref)
+	if err != nil {
+		return telegram.ChatMessages{}, fmt.Errorf("resolve: %w", err)
+	}
+	cm, err := telegram.FetchWindow(ctx, api, p, since)
+	if err != nil {
+		return telegram.ChatMessages{}, fmt.Errorf("fetch: %w", err)
+	}
+	return cm, nil
 }
