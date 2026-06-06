@@ -1,0 +1,13 @@
+# golangci-lint configuration (schema v2). The standard linter set
+# (errcheck, govet, ineffassign, staticcheck, unused) is plenty for a small
+# template and keeps false positives low for contributors.
+version: "2"
+linters:
+  default: standard
+  settings:
+    errcheck:
+      # Writes to stderr/stdout (prompts, warnings) have no actionable error.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln

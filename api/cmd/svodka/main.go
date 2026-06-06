@@ -56,7 +56,7 @@ func run(ctx context.Context, log *logger.Logger) error {
 			return fmt.Errorf("auth status: %w", err)
 		}
 		if !status.Authorized {
-			return errors.New("Telegram session is not authorized; run `go run ./api/cmd/login` in a Codespace to refresh SVODKA_TELEGRAM_SESSION")
+			return errors.New("no authorized Telegram session; run `go run ./api/cmd/login` in a Codespace to refresh SVODKA_TELEGRAM_SESSION")
 		}
 		// Log only the numeric Telegram id; usernames/names are PII-adjacent
 		// and Actions logs may be visible to others on a forked template.

@@ -18,11 +18,11 @@ func newTestAuth(t *testing.T, input string) (*termAuth, *bytes.Buffer) {
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
-	t.Cleanup(func() { r.Close() })
+	t.Cleanup(func() { _ = r.Close() })
 	if _, err := w.WriteString(input); err != nil {
 		t.Fatalf("write input: %v", err)
 	}
-	w.Close()
+	_ = w.Close()
 	out := &bytes.Buffer{}
 	a := newTermAuth(r, out)
 	if a.isTTY {

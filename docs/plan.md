@@ -231,19 +231,21 @@
 
 Порядок M12–M19 = приоритет пользователя (B,E,C,D,F,G,H,A). Номера ADR — предварительные.
 
-## M12 — CI + линтинг (Maintainer-гигиена)  `[ ]`
+## M12 — CI + линтинг (Maintainer-гигиена)  `[x]`
 
-Цель: на push/PR гонять проверки, держать публичный template здоровым (сейчас на PR не
-гоняется ничего). Низкая стоимость, высокая отдача для сопровождения.
+Цель: на push/PR гонять проверки, держать публичный template здоровым. Сделано.
 
-- [ ] M12.1 `.github/workflows/ci.yml` — `on: push, pull_request`; `setup-go`
-  (`go-version-file: go.mod`); `go build/vet/test ./...` + `gofmt -l .` (fail если непусто);
-  `permissions: contents: read`.
-- [ ] M12.2 `golangci-lint` — `.golangci.yml` + шаг `golangci/golangci-lint-action`.
-  Развилка: базовый набор линтеров vs расширенный.
-- [ ] M12.3 `.github/dependabot.yml` — экосистемы `gomod` + `github-actions`, еженедельно.
-- [ ] M12.4 Зелёный CI на текущем коде (починить новые замечания линтера, если всплывут).
-  README (EN+RU): опц. бейдж CI.
+- [x] M12.1 `.github/workflows/ci.yml` — `on: push (main) + pull_request`; `actions/checkout@v6`
+  + `actions/setup-go@v6` (`go-version-file: go.mod`); job `build-test` = `go build/vet/test ./...`
+  + gofmt-check (fail если непусто); `permissions: contents: read`.
+- [x] M12.2 `.golangci.yml` (schema `version: "2"`, `default: standard`; errcheck
+  `exclude-functions: fmt.Fprint*` — прометки в stderr); job `lint` = `golangci/golangci-lint-action@v9`,
+  golangci-lint `v2.12`. Набор линтеров — **standard** (решение).
+- [x] M12.3 `.github/dependabot.yml` — `gomod` + `github-actions`, еженедельно.
+- [x] M12.4 Зелёный CI на текущем коде: починены 11 замечаний (errcheck-исключение Fprint* +
+  `_ =` на `Close()` в тесте + ST1005 reword error-строки в `svodka/main.go`). Локально
+  golangci-lint `0 issues`, build/vet/test/gofmt зелёные. Бейдж CI пропущен (нет remote/owner —
+  добавит owner после публикации).
 
 ## M13 — Бэклинки на сообщения  `[ ]` → ADR-15
 
