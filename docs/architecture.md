@@ -30,7 +30,7 @@ GitHub Actions (cron / workflow_dispatch)
 | FLOOD_WAIT | `gotd/contrib/middleware/floodwait` (+ `ratelimit`) | авто-retry |
 | Конфиг (секреты) | `github.com/ardanlabs/conf/v3` | env + `--help` + masking |
 | Конфиг (файл) | `gopkg.in/yaml.v3` | корректное применение false/0 (см. ADR-3) |
-| LLM | Claude (Anthropic Messages API) через `net/http` | требование; за интерфейсом |
+| LLM | Claude (Anthropic Messages API) через `anthropic-sdk-go` | требование; за интерфейсом (см. ADR-9) |
 | Логи | `log/slog` (обёртка в `foundation/logger`) | stdlib, структурно |
 | Хостинг | GitHub Actions (cron + dispatch) | бесплатно, ноль инфраструктуры |
 | Логин UX | GitHub Codespaces | браузерный терминал, без локального тулчейна |
@@ -104,9 +104,10 @@ svodka/
 
 ### 4.3 `business/llm`
 - `Provider interface { Summarize(ctx, Input) (string, error) }`, `Input{System,User,Model,MaxTokens}`.
-- `claude.go`: POST `https://api.anthropic.com/v1/messages`, заголовки `x-api-key`,
-  `anthropic-version: 2023-06-01`; **prompt caching** (`cache_control` на system-блоке);
-  парсинг `content[0].text`; обработка ошибок/кодов.
+- `claude.go`: официальный `anthropic-sdk-go` (`client.Messages.New`); модель/`MaxTokens` —
+  из конфига; **prompt caching** (`cache_control` на system-блоке — окупается в map-reduce);
+  сбор текста из `Message.Content` (type-switch на `TextBlock`); пустой ответ → ошибка.
+  Сетевые ошибки/ретраи 429/5xx — внутри SDK.
 
 ### 4.4 `business/digest`
 - `Build(chats []ChatMessages, settings) string`:
@@ -175,6 +176,12 @@ max_output_tokens: 2000
   апдейты не слушаем, сообщения не храним.
 - **ADR-6. Логин в Codespaces.** Интерактивный код нельзя получить «в один клик»;
   Codespaces даёт браузерный терминал без локального тулчейна.
+- **ADR-9. Claude через официальный `anthropic-sdk-go`, не `net/http`.** Изначально
+  планировался ручной `net/http` ради минимума зависимостей, но официальный Go-SDK даёт
+  типы, константы моделей и авто-ретраи 429/5xx (которые иначе пришлось бы писать руками),
+  а тяжёлый граф зависимостей и так уже есть из-за `gotd`. Провайдер спрятан за интерфейсом
+  `llm.Provider`, поэтому выбор транспорта локализован в `claude.go`. Модель и `max_tokens`
+  берём из конфига; `cache_control` на system-блоке окупается только в map-reduce (M5).
 - **ADR-8. Резолв пиров: имя/ссылка → manager.Resolve; числовой id → ленивый скан
   диалогов.** Голый числовой id нельзя резолвить через MTProto без `access_hash`,
   которого нет в конфиге. При первом числовом id один раз сканируем `query.GetDialogs`

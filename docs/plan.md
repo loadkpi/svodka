@@ -81,13 +81,15 @@
   Юнит-тесты `mediaTag`/`normalize`/`reverse` (ADR-7); сетевой `FetchWindow` не юнитим.
 - [x] M3.6 `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt` — зелёные.
 
-## M4 — LLM-провайдер (Claude)  `[ ]`
+## M4 — LLM-провайдер (Claude)  `[x]`
 
-- [ ] M4.1 `business/llm/llm.go` — `Provider` интерфейс, `Input{System,User,Model,MaxTokens}`.
-- [ ] M4.2 `business/llm/claude.go` — `New(apiKey)`; `Summarize` (POST /v1/messages,
-  заголовки, prompt caching на system, таймаут, парсинг ответа).
-- [ ] M4.3 Обработка ошибок: коды != 200, пустой content, network → понятные ошибки.
-- [ ] M4.4 `go build ./...`, `go vet ./...`.
+- [x] M4.1 `business/llm/llm.go` — `Provider` интерфейс, `Input{System,User,Model,MaxTokens}`.
+- [x] M4.2 `business/llm/claude.go` — `NewClaude(apiKey)`; `Summarize` через
+  `anthropic-sdk-go` (`client.Messages.New`), `cache_control` на system-блоке (ADR-9),
+  модель/MaxTokens из конфига. `extractText` — сбор `TextBlock` из `Content`.
+- [x] M4.3 Обработка ошибок: сетевые/коды/ретраи 429-5xx — в SDK; пустой content → ошибка.
+- [x] M4.4 `go build`/`vet`/`test`/`gofmt` — зелёные. `claude_test.go` — юнит `extractText`
+  (пустой/один/несколько text-блоков, thinking игнорируется) через `json.Unmarshal` (ADR-7).
 
 ## M5 — Формирование дайджеста  `[ ]`
 
