@@ -68,6 +68,7 @@ func Run(ctx context.Context, api *tg.Client, d Deps) error {
 		Model:             d.Cfg.Model,
 		MaxTokens:         d.Cfg.MaxOutputTokens,
 		ExtraInstructions: d.Cfg.ExtraInstructions,
+		Backlinks:         d.Cfg.Backlinks == nil || *d.Cfg.Backlinks,
 	})
 	if err != nil {
 		return fmt.Errorf("build digest: %w", err)

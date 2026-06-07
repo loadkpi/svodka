@@ -13,18 +13,23 @@ import (
 
 // Message is a normalized chat message ready for summarization. Time is UTC; the
 // digest applies the configured timezone. Author is empty for channel posts
-// (the sender is the channel itself, already named by ChatMessages.Title).
+// (the sender is the channel itself, already named by ChatMessages.Title). ID is
+// the message id, used to build a t.me/c backlink (M13).
 type Message struct {
 	Author string
 	Time   time.Time
 	Text   string
+	ID     int
 }
 
 // ChatMessages is the messages of one source chat within the time window, in
-// chronological order (oldest first).
+// chronological order (oldest first). ChannelID is the raw channel/supergroup id
+// (no -100 prefix) used for t.me/c backlinks; it is 0 for users and basic groups,
+// which have no addressable per-message link (M13, ADR-15).
 type ChatMessages struct {
-	Title    string
-	Messages []Message
+	Title     string
+	ChannelID int64
+	Messages  []Message
 }
 
 // FetchWindow reads p's history back to since and returns the normalized,
@@ -32,6 +37,9 @@ type ChatMessages struct {
 // the walk stops at the first message older than since.
 func FetchWindow(ctx context.Context, api *tg.Client, p Peer, since time.Time) (ChatMessages, error) {
 	cm := ChatMessages{Title: p.Title}
+	if ch, ok := p.Input.(*tg.InputPeerChannel); ok {
+		cm.ChannelID = ch.ChannelID
+	}
 	cutoff := since.Unix()
 
 	iter := query.Messages(api).GetHistory(p.Input).BatchSize(100).Iter()
@@ -77,6 +85,7 @@ func normalize(msg tg.NotEmptyMessage, ent peer.Entities) (Message, bool) {
 		Author: author(m, ent),
 		Time:   time.Unix(int64(m.Date), 0).UTC(),
 		Text:   text,
+		ID:     m.ID,
 	}, true
 }
 

@@ -37,6 +37,9 @@ type Options struct {
 	// ExtraInstructions is the deployer's free-text customization, appended to
 	// the final-output prompts (single/reduce). Empty = default behavior.
 	ExtraInstructions string
+	// Backlinks appends a bare t.me/c source link to each channel/supergroup
+	// message line so the digest can point back to the original (M13, ADR-15).
+	Backlinks bool
 }
 
 // Usage aggregates token accounting across every LLM call Build made (one for a
@@ -74,7 +77,7 @@ func Build(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, o
 		threshold = defaultThresholdChars
 	}
 
-	full := serializeAll(chats, loc)
+	full := serializeAll(chats, loc, opts.Backlinks)
 	if !useMapReduce(full, threshold) {
 		return single(ctx, p, full, opts)
 	}
@@ -108,7 +111,7 @@ func mapReduce(ctx context.Context, p llm.Provider, chats []telegram.ChatMessage
 	for i, c := range chats {
 		r, err := p.Summarize(ctx, llm.Input{
 			System:    sys,
-			User:      serializeChat(c, loc),
+			User:      serializeChat(c, loc, opts.Backlinks),
 			Model:     opts.Model,
 			MaxTokens: opts.MaxTokens,
 		})

@@ -52,7 +52,7 @@ func TestNormalize(t *testing.T) {
 	)
 
 	userMsg := func(text string, media tg.MessageMediaClass) *tg.Message {
-		m := &tg.Message{Date: ts, Message: text}
+		m := &tg.Message{ID: 99, Date: ts, Message: text}
 		m.SetFromID(&tg.PeerUser{UserID: 7})
 		if media != nil {
 			m.SetMedia(media)
@@ -82,6 +82,9 @@ func TestNormalize(t *testing.T) {
 		}
 		if got.Author != "Alice" {
 			t.Errorf("author = %q, want Alice", got.Author)
+		}
+		if got.ID != 99 {
+			t.Errorf("id = %d, want 99", got.ID)
 		}
 		if !got.Time.Equal(time.Unix(ts, 0).UTC()) {
 			t.Errorf("time = %v, want %v", got.Time, time.Unix(ts, 0).UTC())

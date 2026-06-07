@@ -14,7 +14,9 @@ import (
 // formatRules is shared across prompts so output styling stays consistent.
 const formatRules = "Use plain text only. No markdown headers (#), tables, or code fences. " +
 	"Use '- ' for bullet points. Put each chat title on its own line. " +
-	"Be factual and concise; omit greetings and small talk; do not invent facts."
+	"Be factual and concise; omit greetings and small talk; do not invent facts. " +
+	"Some message lines end with a bare source link (https://t.me/...). Keep the relevant " +
+	"link on the bullet it supports; never invent or modify links."
 
 // withExtra appends the deployer's free-text extra_instructions to a system
 // prompt. Empty extra returns base unchanged, so the no-customization case stays
@@ -33,7 +35,7 @@ func withExtra(base, extra string) string {
 func singleSystem(lang, extra string) string {
 	return withExtra(fmt.Sprintf(
 		"You produce a daily digest of Telegram chats. Write everything in language %q (ISO 639-1 code). "+
-			"The input lists chats; each starts with a '## ' title marker, followed by '[HH:MM] Author: text' lines. "+
+			"The input lists chats; each starts with a '## ' title marker, followed by '[HH:MM] Author: text' lines (a line may end with a source link). "+
 			"For each chat, output the chat title on its own line, then bullets covering key topics, decisions, "+
 			"mentions of the account owner, and important links. %s",
 		lang, formatRules,
@@ -49,7 +51,7 @@ func singleSystem(lang, extra string) string {
 func mapSystem(lang string) string {
 	return fmt.Sprintf(
 		"Summarize one Telegram chat into bullet points. Write everything in language %q (ISO 639-1 code). "+
-			"The input starts with a '## ' title marker, followed by '[HH:MM] Author: text' lines. "+
+			"The input starts with a '## ' title marker, followed by '[HH:MM] Author: text' lines (a line may end with a source link). "+
 			"Output only the bullets — key topics, decisions, mentions of the account owner, important links. "+
 			"Do not repeat the chat title. %s",
 		lang, formatRules,

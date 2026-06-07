@@ -36,6 +36,10 @@ type Settings struct {
 	// ExtraInstructions is optional free-text guidance appended to the digest
 	// prompt (tone, structure, what to emphasize). Empty = default behavior.
 	ExtraInstructions string `yaml:"extra_instructions"`
+	// Backlinks toggles t.me/c source links on digest items (default true). A
+	// pointer distinguishes an absent key (-> default true) from an explicit
+	// `backlinks: false` (ADR-3/ADR-15).
+	Backlinks *bool `yaml:"backlinks"`
 }
 
 // Secrets holds credentials and runtime flags sourced from the environment.
@@ -66,6 +70,7 @@ type Overrides struct {
 	Model             *string   `conf:"flag:model,help:override model"`
 	MaxOutputTokens   *int      `conf:"flag:max-output-tokens,help:override max_output_tokens"`
 	ExtraInstructions *string   `conf:"flag:extra-instructions,help:override extra_instructions"`
+	Backlinks         *bool     `conf:"flag:backlinks,help:override backlinks"`
 }
 
 // Config is the full configuration used by the svodka job.
@@ -168,6 +173,10 @@ func applyDefaults(s *Settings) {
 	if s.MaxOutputTokens == 0 {
 		s.MaxOutputTokens = 2000
 	}
+	if s.Backlinks == nil {
+		t := true
+		s.Backlinks = &t
+	}
 }
 
 // applyOverrides applies CLI flag overrides on top of yaml+defaults. Only
@@ -197,6 +206,9 @@ func applyOverrides(s *Settings, ov Overrides) {
 	}
 	if ov.ExtraInstructions != nil {
 		s.ExtraInstructions = *ov.ExtraInstructions
+	}
+	if ov.Backlinks != nil {
+		s.Backlinks = ov.Backlinks
 	}
 }
 

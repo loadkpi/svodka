@@ -75,6 +75,7 @@ here. See [`config.example.yml`](config.example.yml) for a documented example.
 | `model` | `"claude-sonnet-4-6"` | Anthropic model id (cheaper ↔ better): `claude-haiku-4-5` (cheapest/fastest, fine for most digests) · `claude-sonnet-4-6` (balanced) · `claude-opus-4-8` (highest quality). |
 | `max_output_tokens` | `2000` | Output token budget for the summary. |
 | `extra_instructions` | `""` | Optional free-text guidance appended to the digest prompt (tone, structure, what to emphasize). Empty = default; Telegram formatting rules still win. |
+| `backlinks` | `true` | Add `t.me/c` source links to digest items so you can jump to the original message. Channels/supergroups only; a private link opens **only for members** of that chat. Set `false` to disable. |
 
 ### Local one-off overrides (flags)
 
@@ -92,7 +93,7 @@ go run ./api/cmd/svodka \
 Precedence is **flag > `config.yml` > default**, and only flags you actually pass take
 effect (an unset flag changes nothing). Every setting has a kebab-case flag
 (`--window-hours`, `--target-chat`, `--output-lang`, `--timezone`, `--model`,
-`--max-output-tokens`, `--extra-instructions`, `--source-chats`); run with `--help` to
+`--max-output-tokens`, `--extra-instructions`, `--backlinks`, `--source-chats`); run with `--help` to
 list them. The **scheduled run in GitHub Actions uses `config.yml`** — flags are a local
 convenience only.
 

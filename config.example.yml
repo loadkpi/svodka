@@ -34,3 +34,8 @@ max_output_tokens: 2000
 # what to emphasize). Leave empty/omitted for default behavior. The Telegram
 # formatting rules (plain text, bullets) still take precedence.
 # extra_instructions: "Start with a one-line TL;DR, then group items by topic."
+
+# Add t.me/c source links to digest items so you can jump to the original
+# message (channels/supergroups only; a private link opens only for chat members).
+# Default true; set to false to disable.
+backlinks: true

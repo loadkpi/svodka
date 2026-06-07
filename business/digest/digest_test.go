@@ -42,10 +42,52 @@ func TestSerializeChat(t *testing.T) {
 		},
 	}
 
-	got := serializeChat(chat, loc)
+	got := serializeChat(chat, loc, false)
 	want := "## Team\n[14:32] Alice: hello\n[14:33] channel post\n"
 	if got != want {
 		t.Fatalf("serializeChat\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestLinkFor(t *testing.T) {
+	tests := []struct {
+		name      string
+		channelID int64
+		msgID     int
+		want      string
+	}{
+		{"channel and msg", 123, 456, "https://t.me/c/123/456"},
+		{"no channel (user/basic group)", 0, 456, ""},
+		{"no msg id", 123, 0, ""},
+		{"negative channel", -1, 456, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := linkFor(tt.channelID, tt.msgID); got != tt.want {
+				t.Errorf("linkFor(%d, %d) = %q, want %q", tt.channelID, tt.msgID, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSerializeChatBacklinks(t *testing.T) {
+	loc := time.UTC
+	base := time.Date(2026, 6, 6, 14, 32, 0, 0, time.UTC)
+	m := telegram.Message{Author: "Alice", Time: base, Text: "hello", ID: 42}
+
+	// Channel chat with backlinks on: each line ends with a t.me/c link.
+	channel := telegram.ChatMessages{Title: "Team", ChannelID: 123, Messages: []telegram.Message{m}}
+	if got, want := serializeChat(channel, loc, true), "## Team\n[14:32] Alice: hello https://t.me/c/123/42\n"; got != want {
+		t.Fatalf("backlinks on\n got: %q\nwant: %q", got, want)
+	}
+	// Same chat, backlinks off: no link.
+	if got, want := serializeChat(channel, loc, false), "## Team\n[14:32] Alice: hello\n"; got != want {
+		t.Fatalf("backlinks off\n got: %q\nwant: %q", got, want)
+	}
+	// User/basic-group chat (ChannelID 0): no link even with backlinks on.
+	plain := telegram.ChatMessages{Title: "DM", ChannelID: 0, Messages: []telegram.Message{m}}
+	if got, want := serializeChat(plain, loc, true), "## DM\n[14:32] Alice: hello\n"; got != want {
+		t.Fatalf("no channel id\n got: %q\nwant: %q", got, want)
 	}
 }
 
@@ -58,7 +100,7 @@ func TestSerializeChatRespectsLocation(t *testing.T) {
 	base := time.Date(2026, 6, 6, 14, 32, 0, 0, time.UTC)
 	chat := telegram.ChatMessages{Title: "T", Messages: []telegram.Message{msg("A", "x", base)}}
 
-	got := serializeChat(chat, loc)
+	got := serializeChat(chat, loc, false)
 	if !strings.Contains(got, "[16:32]") {
 		t.Fatalf("expected local time 16:32, got %q", got)
 	}
@@ -72,7 +114,7 @@ func TestSerializeAll(t *testing.T) {
 		{Title: "B", Messages: []telegram.Message{msg("v", "two", base)}},
 	}
 
-	got := serializeAll(chats, loc)
+	got := serializeAll(chats, loc, false)
 	want := "## A\n[09:00] u: one\n\n## B\n[09:00] v: two\n"
 	if got != want {
 		t.Fatalf("serializeAll\n got: %q\nwant: %q", got, want)

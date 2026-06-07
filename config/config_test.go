@@ -19,6 +19,7 @@ func baseline() Settings {
 		Model:             "claude-sonnet-4-6",
 		MaxOutputTokens:   2000,
 		ExtraInstructions: "from yaml",
+		Backlinks:         ptr(true),
 	}
 }
 
@@ -41,6 +42,7 @@ func TestApplyOverrides_EachFieldApplied(t *testing.T) {
 		Model:             ptr("claude-haiku-4-5"),
 		MaxOutputTokens:   ptr(500),
 		ExtraInstructions: ptr("be terse"),
+		Backlinks:         ptr(false),
 	})
 	want := Settings{
 		SourceChats:       []string{"@a", "@b"},
@@ -51,6 +53,7 @@ func TestApplyOverrides_EachFieldApplied(t *testing.T) {
 		Model:             "claude-haiku-4-5",
 		MaxOutputTokens:   500,
 		ExtraInstructions: "be terse",
+		Backlinks:         ptr(false),
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("overrides not applied\n got: %+v\nwant: %+v", got, want)
@@ -79,6 +82,25 @@ func TestApplyOverrides_ExplicitZeroIsHonored(t *testing.T) {
 	if got.TargetChat != "@group" {
 		t.Errorf("TargetChat changed unexpectedly: %q", got.TargetChat)
 	}
+}
+
+// Backlinks defaults to true when the key is absent, but an explicit
+// `backlinks: false` in config.yml must survive applyDefaults (ADR-3/ADR-15).
+func TestApplyDefaults_Backlinks(t *testing.T) {
+	t.Run("absent defaults to true", func(t *testing.T) {
+		s := Settings{} // Backlinks nil
+		applyDefaults(&s)
+		if s.Backlinks == nil || !*s.Backlinks {
+			t.Fatalf("Backlinks = %v, want true", s.Backlinks)
+		}
+	})
+	t.Run("explicit false preserved", func(t *testing.T) {
+		s := Settings{Backlinks: ptr(false)}
+		applyDefaults(&s)
+		if s.Backlinks == nil || *s.Backlinks {
+			t.Fatalf("Backlinks = %v, want false", s.Backlinks)
+		}
+	})
 }
 
 func TestSplitChats(t *testing.T) {
