@@ -76,6 +76,26 @@ here. See [`config.example.yml`](config.example.yml) for a documented example.
 | `max_output_tokens` | `2000` | Output token budget for the summary. |
 | `extra_instructions` | `""` | Optional free-text guidance appended to the digest prompt (tone, structure, what to emphasize). Empty = default; Telegram formatting rules still win. |
 
+### Local one-off overrides (flags)
+
+For a single local run you can override any setting with a flag instead of editing
+`config.yml` — handy for tuning the prompt or model and previewing into Saved Messages:
+
+```sh
+go run ./api/cmd/svodka \
+  --target-chat me --window-hours 2 \
+  --model claude-haiku-4-5 \
+  --source-chats "@chat_one,@chat_two" \
+  --extra-instructions "Keep it to 5 bullets."
+```
+
+Precedence is **flag > `config.yml` > default**, and only flags you actually pass take
+effect (an unset flag changes nothing). Every setting has a kebab-case flag
+(`--window-hours`, `--target-chat`, `--output-lang`, `--timezone`, `--model`,
+`--max-output-tokens`, `--extra-instructions`, `--source-chats`); run with `--help` to
+list them. The **scheduled run in GitHub Actions uses `config.yml`** — flags are a local
+convenience only.
+
 ## Secrets
 
 All secrets are GitHub Actions secrets, prefixed with `SVODKA_`. They never appear in
