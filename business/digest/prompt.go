@@ -15,8 +15,10 @@ import (
 const formatRules = "Use plain text only. No markdown headers (#), tables, or code fences. " +
 	"Use '- ' for bullet points. Put each chat title on its own line. " +
 	"Be factual and concise; omit greetings and small talk; do not invent facts. " +
-	"Some message lines end with a bare source link (https://t.me/...). Keep the relevant " +
-	"link on the bullet it supports; never invent or modify links."
+	"Source links: input lines may end with a bare link (https://t.me/...). Every bullet " +
+	"that summarizes linked messages MUST end with the link of its most relevant source " +
+	"message, copied verbatim. Keep links already present on input bullets; never invent " +
+	"or alter links."
 
 // withExtra appends the deployer's free-text extra_instructions to a system
 // prompt. Empty extra returns base unchanged, so the no-customization case stays
