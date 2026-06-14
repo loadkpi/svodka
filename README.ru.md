@@ -28,7 +28,7 @@ svodka заходит в Telegram **под вами** (юзербот на MTPro
 
 ### Шаги
 
-1. **Use this template** → создайте новый **приватный** репозиторий.
+1. [**Создайте приватный репозиторий из этого шаблона**](https://github.com/new?template_name=svodka&template_owner=loadkpi) — откройте ссылку, выберите видимость **Private**, нажмите **Create repository**.
 2. Получите `api_id` / `api_hash` на <https://my.telegram.org>.
 3. **Залогиньтесь в Telegram** (один раз). Откройте Codespace — это браузерный
    терминал, локальный тулчейн не нужен — сделайте `api_id`/`api_hash` доступными с
