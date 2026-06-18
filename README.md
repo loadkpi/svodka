@@ -149,6 +149,36 @@ The job runs daily at **06:00 UTC** by default. Edit the `cron` line in
 - Runner IPs change between runs, so Telegram may occasionally show a **"new login"**
   notification; your existing session keeps working.
 
+## Updating from the template
+
+A repository created from a template has **no link** to it, so there's no
+one-click "update" button — you pull new versions over a git remote. Do it in a
+Codespace terminal (or any local clone). One-time setup:
+
+```sh
+git remote add template https://github.com/loadkpi/svodka.git
+```
+
+Then, whenever you want the latest version:
+
+```sh
+git fetch template
+git merge template/main --allow-unrelated-histories   # --allow-unrelated-histories is only needed the first time
+git push
+```
+
+- **Keep your own `config.yml`.** It's the file you customized, so a merge will
+  usually conflict there — resolve it by keeping **your** chats/targets while
+  taking any new keys the update introduces (`git checkout --ours config.yml`
+  keeps your version wholesale). Your **secrets are untouched** — they live in
+  GitHub Secrets, not in the repo.
+- Re-run the acceptance gate after merging (`make build && make vet && make test`)
+  and trigger **Run workflow** with `target_chat: "me"` to confirm the update works
+  before the next scheduled run.
+- If the histories have diverged badly and you don't have local changes worth
+  keeping besides `config.yml`, you can instead cherry-pick specific commits
+  (`git log template/main` to see them, then `git cherry-pick <sha>`).
+
 ## Security & privacy
 - The session grants full access to your Telegram account. Keep the repo private and
   never commit or share the session string.

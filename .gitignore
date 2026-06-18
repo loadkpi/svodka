@@ -6,14 +6,19 @@ session*.txt
 *.local
 .env
 .env.*
+.envrc
 
 # Personal config variants (config.yml stays tracked as the safe default;
 # config.example.yml stays tracked as the documented reference).
 config.*.yml
 !config.example.yml
 
-# Claude Code personal (non-shared) settings; not for the public template
-.claude/settings.local.json
+# Claude Code personal (non-shared) tooling/settings; not for the public template
+.claude/
+
+# Stray dir created when a literal "~" is used instead of $HOME (e.g. a tool
+# writing to ~/.config with the tilde unexpanded). Never a real project path.
+/~/
 
 # Build output
 bin/
