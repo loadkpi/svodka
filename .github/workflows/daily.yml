@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   digest:
-    if: github.repository != 'loadkpi/svodka'
+    if: ${{ !github.event.repository.is_template && secrets.SVODKA_TELEGRAM_API_ID != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
