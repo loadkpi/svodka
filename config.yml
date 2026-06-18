@@ -11,6 +11,15 @@ source_chats: []
 # "me" posts to your Saved Messages (safe preview). Set to "@yourgroup" to go live.
 target_chat: "me"
 
+# Optional: send digests of different chats to different targets in one run. When
+# `routes` is set, the source_chats/target_chat above are ignored; the settings
+# below (window, language, model, ...) stay global. Omit for one digest (default).
+# routes:
+#   - target_chat: "@team_one"
+#     source_chats: ["@chat_a", "@chat_b"]
+#   - target_chat: "@team_two"
+#     source_chats: ["@chat_c"]
+
 window_hours: 24
 output_lang: "ru"
 timezone: "UTC"

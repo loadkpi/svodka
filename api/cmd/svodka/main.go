@@ -39,8 +39,7 @@ func run(ctx context.Context, log *logger.Logger) error {
 		return err
 	}
 	log.Info(ctx, "config loaded",
-		"source_chats", len(cfg.SourceChats),
-		"target_chat", cfg.TargetChat,
+		"routes", len(cfg.EffectiveRoutes()),
 		"window_hours", cfg.WindowHours,
 		"model", cfg.Model,
 	)

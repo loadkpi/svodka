@@ -13,6 +13,19 @@ source_chats:
 #   "@group"  -> a group/channel you can post to (go live)
 target_chat: "me"
 
+# Optional: fan out several digests in one run — different source chats to
+# different target chats. When `routes` is set, the top-level source_chats /
+# target_chat above are ignored; all other settings below stay global (shared by
+# every route). Leave `routes` out for the default single-digest behavior.
+# routes:
+#   - target_chat: "@team_one"
+#     source_chats:
+#       - "@chat_a"
+#       - "@chat_b"
+#   - target_chat: "@team_two"   # omit or "" -> Saved Messages
+#     source_chats:
+#       - "@chat_c"
+
 # How far back to read, in hours.
 window_hours: 24
 

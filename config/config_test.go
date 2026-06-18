@@ -103,6 +103,78 @@ func TestApplyDefaults_Backlinks(t *testing.T) {
 	})
 }
 
+func TestEffectiveRoutes(t *testing.T) {
+	t.Run("no routes synthesizes single from top-level", func(t *testing.T) {
+		s := Settings{SourceChats: []string{"@a", "@b"}, TargetChat: "@group"}
+		got := s.EffectiveRoutes()
+		want := []Route{{SourceChats: []string{"@a", "@b"}, TargetChat: "@group"}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("EffectiveRoutes() = %#v, want %#v", got, want)
+		}
+	})
+	t.Run("routes win over top-level", func(t *testing.T) {
+		s := Settings{
+			SourceChats: []string{"@ignored"},
+			TargetChat:  "@ignored",
+			Routes: []Route{
+				{SourceChats: []string{"@a"}, TargetChat: "@team1"},
+				{SourceChats: []string{"@b"}, TargetChat: "@team2"},
+			},
+		}
+		got := s.EffectiveRoutes()
+		want := []Route{
+			{SourceChats: []string{"@a"}, TargetChat: "@team1"},
+			{SourceChats: []string{"@b"}, TargetChat: "@team2"},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("EffectiveRoutes() = %#v, want %#v", got, want)
+		}
+	})
+	t.Run("empty route target defaults to me", func(t *testing.T) {
+		s := Settings{Routes: []Route{{SourceChats: []string{"@a"}}}}
+		got := s.EffectiveRoutes()
+		if got[0].TargetChat != "me" {
+			t.Errorf("TargetChat = %q, want %q", got[0].TargetChat, "me")
+		}
+	})
+}
+
+func TestValidateRoutes(t *testing.T) {
+	// A Config that is valid apart from the source-chat shape under test.
+	newCfg := func(s Settings) *Config {
+		c := &Config{Settings: s}
+		c.Telegram.Session = "sess"
+		c.Anthropic.Key = "key"
+		return c
+	}
+
+	t.Run("single route from top-level ok", func(t *testing.T) {
+		if err := newCfg(Settings{SourceChats: []string{"@a"}}).validate(); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("empty top-level source_chats errors", func(t *testing.T) {
+		if err := newCfg(Settings{}).validate(); err == nil {
+			t.Error("want error for empty source_chats, got nil")
+		}
+	})
+	t.Run("routes with sources ok despite empty top-level", func(t *testing.T) {
+		s := Settings{Routes: []Route{{SourceChats: []string{"@a"}, TargetChat: "@t"}}}
+		if err := newCfg(s).validate(); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("route with empty source_chats errors", func(t *testing.T) {
+		s := Settings{Routes: []Route{
+			{SourceChats: []string{"@a"}, TargetChat: "@t1"},
+			{TargetChat: "@t2"},
+		}}
+		if err := newCfg(s).validate(); err == nil {
+			t.Error("want error for route with empty source_chats, got nil")
+		}
+	})
+}
+
 func TestSplitChats(t *testing.T) {
 	tests := []struct {
 		name string

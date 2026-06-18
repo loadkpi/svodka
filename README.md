@@ -76,6 +76,26 @@ here. See [`config.example.yml`](config.example.yml) for a documented example.
 | `max_output_tokens` | `2000` | Output token budget for the summary. |
 | `extra_instructions` | `""` | Optional free-text guidance appended to the digest prompt (tone, structure, what to emphasize). Empty = default; Telegram formatting rules still win. |
 | `backlinks` | `true` | Add `t.me/c` source links to digest items so you can jump to the original message. Channels/supergroups only; a private link opens **only for members** of that chat. Set `false` to disable. |
+| `routes` | — (optional) | Fan out several digests in one run: a list of `{source_chats, target_chat}`. See [Multiple digests](#multiple-digests-routes) below. |
+
+### Multiple digests (`routes`)
+
+By default svodka builds **one** digest from `source_chats` and posts it to one
+`target_chat`. To send different chats to different targets in a single run, add a
+`routes` list — each route is its own `source_chats` → `target_chat`:
+
+```yaml
+routes:
+  - target_chat: "@team_one"
+    source_chats: ["@chat_a", "@chat_b"]
+  - target_chat: "@team_two"   # omit or "" -> Saved Messages
+    source_chats: ["@chat_c"]
+```
+
+When `routes` is set, the top-level `source_chats`/`target_chat` are ignored, but all
+other settings (`window_hours`, `output_lang`, `model`, `backlinks`, …) stay **global**
+across every route. Leave `routes` out for the default single-digest behavior. Routes run
+independently: if one fails the others still go out, and the run is reported as failed.
 
 ### Local one-off overrides (flags)
 

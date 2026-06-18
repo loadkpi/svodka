@@ -329,6 +329,23 @@ Language* (K&R), *Effective Concurrency in Go* (Serdar). Архитектура 
   (мутабельные `dialogByID`/`scanned`) и последовательная обработка чатов — осознанный
   trade-off (rate-limit + prompt-cache), чтобы будущий контрибьютор не распараллелил вслепую.
 
+## M21 — Мультимаршрутная рассылка (fan-out)  `[x]` → ADR-19
+
+Цель: за один прогон рассылать дайджесты разных наборов чатов в разные target-чаты;
+дефолт остаётся «один дайджест» (обратная совместимость).
+
+- [x] M21.1 `config`: тип `Route{source_chats,target_chat}` + поле `routes []Route`;
+  чистый `Settings.EffectiveRoutes()` (routes → они; иначе один синтетический маршрут из
+  верхнеуровневых полей; пустой target → `me`). `validate` проверяет непустой source у
+  каждого маршрута (по индексу, без ссылок — NFR-2).
+- [x] M21.2 `summarize`: `Run` цикл по `EffectiveRoutes()` через извлечённый `runRoute`
+  (collect → `digest.Build` глобальными опциями → `Send` в target маршрута); общий
+  resolver/окно/`loc`; толерантность — `errors.Join`, exit 1 при любом упавшем маршруте.
+- [x] M21.3 `main`: лог `config loaded` показывает `routes` = число маршрутов.
+- [x] M21.4 Тесты (чистые): `EffectiveRoutes` (fallback/приоритет/дефолт target) и
+  валидация маршрутов. `config.yml`/`config.example.yml` — закомментированный пример.
+  README (EN+RU). `build/vet/test/gofmt/golangci-lint`.
+
 ## Идеи (не запланировано)
 
 Согласованы в принципе, без приоритета (гигиена/доки):

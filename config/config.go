@@ -24,15 +24,27 @@ import (
 // Callers should print the help text and exit 0.
 var ErrHelp = errors.New("help requested")
 
+// Route is one fan-out target: a set of source chats summarized into a single
+// digest posted to one target chat. Other settings (window, language, model,
+// backlinks, ...) stay global across all routes (ADR-19).
+type Route struct {
+	SourceChats []string `yaml:"source_chats"`
+	TargetChat  string   `yaml:"target_chat"`
+}
+
 // Settings holds non-secret, user-editable configuration from config.yml.
 type Settings struct {
-	SourceChats     []string `yaml:"source_chats"`
-	TargetChat      string   `yaml:"target_chat"`
-	WindowHours     int      `yaml:"window_hours"`
-	OutputLang      string   `yaml:"output_lang"`
-	Timezone        string   `yaml:"timezone"`
-	Model           string   `yaml:"model"`
-	MaxOutputTokens int      `yaml:"max_output_tokens"`
+	SourceChats []string `yaml:"source_chats"`
+	TargetChat  string   `yaml:"target_chat"`
+	// Routes, when non-empty, runs one digest per route (different source chats
+	// to different target chats in a single run). When empty, the top-level
+	// source_chats/target_chat form a single implicit route (ADR-19).
+	Routes          []Route `yaml:"routes"`
+	WindowHours     int     `yaml:"window_hours"`
+	OutputLang      string  `yaml:"output_lang"`
+	Timezone        string  `yaml:"timezone"`
+	Model           string  `yaml:"model"`
+	MaxOutputTokens int     `yaml:"max_output_tokens"`
 	// ExtraInstructions is optional free-text guidance appended to the digest
 	// prompt (tone, structure, what to emphasize). Empty = default behavior.
 	ExtraInstructions string `yaml:"extra_instructions"`
@@ -227,6 +239,24 @@ func splitChats(raw []string) []string {
 	return out
 }
 
+// EffectiveRoutes returns the routes to run. If `routes` is set it wins (and the
+// top-level source_chats/target_chat are ignored); otherwise a single implicit
+// route is synthesized from the top-level fields. A route's empty TargetChat
+// defaults to "me" — the same safe default as the single-route path (ADR-4/ADR-19).
+func (s Settings) EffectiveRoutes() []Route {
+	if len(s.Routes) == 0 {
+		return []Route{{SourceChats: s.SourceChats, TargetChat: s.TargetChat}}
+	}
+	out := make([]Route, len(s.Routes))
+	for i, r := range s.Routes {
+		if r.TargetChat == "" {
+			r.TargetChat = "me"
+		}
+		out[i] = r
+	}
+	return out
+}
+
 func (c *Config) validate() error {
 	if c.Telegram.Session == "" {
 		return errors.New("no Telegram session: run `go run ./api/cmd/login` (e.g. in a Codespace) to create SVODKA_TELEGRAM_SESSION")
@@ -234,8 +264,13 @@ func (c *Config) validate() error {
 	if c.Anthropic.Key == "" {
 		return errors.New("SVODKA_ANTHROPIC_KEY is not set")
 	}
-	if len(c.SourceChats) == 0 {
-		return errors.New("source_chats is empty in config.yml")
+	for i, r := range c.EffectiveRoutes() {
+		if len(r.SourceChats) == 0 {
+			if len(c.Routes) == 0 {
+				return errors.New("source_chats is empty in config.yml")
+			}
+			return fmt.Errorf("routes[%d] has empty source_chats in config.yml", i)
+		}
 	}
 	if c.WindowHours < 0 {
 		return fmt.Errorf("window_hours must be >= 0, got %d", c.WindowHours)

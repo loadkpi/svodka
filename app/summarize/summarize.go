@@ -6,6 +6,7 @@ package summarize
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -36,10 +37,15 @@ type Deps struct {
 	Provider llm.Provider
 }
 
-// Run executes one digest cycle. It is tolerant of per-chat resolve/fetch
-// failures (warn and skip, ADR-8) but fails the run if every source chat failed,
-// if the LLM errors, or if sending fails. An empty digest (no messages in the
-// window) is a success with nothing sent.
+// Run executes one digest cycle over every configured route (ADR-19): each route
+// fans a set of source chats into one digest posted to one target chat. Routes
+// run sequentially sharing a single resolver, window, and global settings. The
+// run is tolerant of a failing route — every route is attempted and errors are
+// aggregated — but returns non-nil (exit 1) if any route failed. Within a route
+// it is tolerant of per-chat resolve/fetch failures (warn and skip, ADR-8) but a
+// route fails if every source chat failed, if the LLM errors, or if sending
+// fails. An empty digest (no messages in the window) is a success with nothing
+// sent.
 func Run(ctx context.Context, api *tg.Client, d Deps) error {
 	start := time.Now()
 
@@ -50,8 +56,30 @@ func Run(ctx context.Context, api *tg.Client, d Deps) error {
 	since := windowStart(start, d.Cfg.WindowHours)
 	resolver := telegram.NewResolver(api)
 
-	chats, st := collect(ctx, api, resolver, d.Cfg.SourceChats, since, d.Log)
+	routes := d.Cfg.EffectiveRoutes()
+	var errs []error
+	for i, route := range routes {
+		// Index, not target ref in the error path's chat warnings: warnings must
+		// not advertise which chats are tracked (NFR-2). The target itself is
+		// already logged in the clear by the send step, as before.
+		if err := runRoute(ctx, api, resolver, d, i, route, since, loc); err != nil {
+			errs = append(errs, fmt.Errorf("route[%d]: %w", i, err))
+		}
+	}
+	d.Log.Info(ctx, "all routes done",
+		"routes", len(routes), "routes_failed", len(errs),
+		"total_ms", time.Since(start).Milliseconds())
+	return errors.Join(errs...)
+}
+
+// runRoute executes one route: collect its source chats within the window, build
+// a digest with the global LLM settings, and post it to the route's target.
+func runRoute(ctx context.Context, api *tg.Client, resolver *telegram.Resolver, d Deps, idx int, route config.Route, since time.Time, loc *time.Location) error {
+	start := time.Now()
+
+	chats, st := collect(ctx, api, resolver, route.SourceChats, since, d.Log)
 	d.Log.Info(ctx, "history collected",
+		"route", idx,
 		"chats_total", st.total, "chats_ok", st.ok, "chats_failed", st.failed,
 		"messages", st.messages, "chars", st.chars,
 		"fetch_ms", time.Since(start).Milliseconds())
@@ -74,15 +102,16 @@ func Run(ctx context.Context, api *tg.Client, d Deps) error {
 		return fmt.Errorf("build digest: %w", err)
 	}
 	if strings.TrimSpace(text) == "" {
-		d.Log.Info(ctx, "no digest produced; nothing to send", "messages", st.messages)
+		d.Log.Info(ctx, "no digest produced; nothing to send", "route", idx, "messages", st.messages)
 		return nil
 	}
 	if usage.Truncated {
 		// Output hit max_output_tokens; the digest is likely cut off mid-thought.
 		d.Log.Warn(ctx, "digest truncated at max_output_tokens; raise max_output_tokens or narrow the window",
-			"max_output_tokens", d.Cfg.MaxOutputTokens, "tokens_out", usage.OutputTokens)
+			"route", idx, "max_output_tokens", d.Cfg.MaxOutputTokens, "tokens_out", usage.OutputTokens)
 	}
 	d.Log.Info(ctx, "digest built",
+		"route", idx,
 		"digest_chars", runeLen(text),
 		"tokens_in", usage.InputTokens, "tokens_out", usage.OutputTokens,
 		"llm_ms", time.Since(llmStart).Milliseconds())
@@ -90,11 +119,12 @@ func Run(ctx context.Context, api *tg.Client, d Deps) error {
 	sendStart := time.Now()
 	sendCtx, cancelSend := context.WithTimeout(ctx, sendTimeout)
 	defer cancelSend()
-	if err := telegram.Send(sendCtx, api, resolver, d.Cfg.TargetChat, text); err != nil {
+	if err := telegram.Send(sendCtx, api, resolver, route.TargetChat, text); err != nil {
 		return fmt.Errorf("send digest: %w", err)
 	}
 	d.Log.Info(ctx, "digest sent",
-		"target", d.Cfg.TargetChat,
+		"route", idx,
+		"target", route.TargetChat,
 		"send_ms", time.Since(sendStart).Milliseconds(),
 		"total_ms", time.Since(start).Milliseconds())
 	return nil
