@@ -28,11 +28,13 @@ svodka заходит в Telegram **под вами** (юзербот на MTPro
 
 ### Шаги
 
-1. [**Создайте приватный репозиторий из этого шаблона**](https://github.com/new?template_name=svodka&template_owner=loadkpi) — откройте ссылку, выберите видимость **Private**, нажмите **Create repository**.
+1. [![Use this template](https://img.shields.io/badge/Use_this_template-2ea44f?style=for-the-badge&logo=github&logoColor=white)](https://github.com/new?template_name=svodka&template_owner=loadkpi) — выберите видимость **Private**, нажмите **Create repository**.
 2. Получите `api_id` / `api_hash` на <https://my.telegram.org>.
 3. **Залогиньтесь в Telegram** (один раз). Откройте Codespace — это браузерный
    терминал, локальный тулчейн не нужен — сделайте `api_id`/`api_hash` доступными с
-   префиксом `SVODKA_` и запустите команду логина:
+   префиксом `SVODKA_` и запустите команду логина. Codespace может несколько минут
+   собираться («Building codespace…») прежде чем откроется терминал — это нормально,
+   просто подождите.
    ```sh
    export SVODKA_TELEGRAM_API_ID=<api_id>
    export SVODKA_TELEGRAM_API_HASH=<api_hash>

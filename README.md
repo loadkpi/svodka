@@ -28,11 +28,12 @@ the project from this template as a **private** repository.
 
 ### Steps
 
-1. [**Create your private repository from this template**](https://github.com/new?template_name=svodka&template_owner=loadkpi) — open the link, set visibility to **Private**, click **Create repository**.
+1. [![Use this template](https://img.shields.io/badge/Use_this_template-2ea44f?style=for-the-badge&logo=github&logoColor=white)](https://github.com/new?template_name=svodka&template_owner=loadkpi) — set visibility to **Private**, click **Create repository**.
 2. Get `api_id` / `api_hash` at <https://my.telegram.org>.
 3. **Sign in to Telegram** (one time). Open a Codespace — a browser terminal, so you
    need no local toolchain — make `api_id`/`api_hash` available with the `SVODKA_`
-   prefix, and run the login command:
+   prefix, and run the login command. The Codespace may take a few minutes to start
+   ("Building codespace…") before a terminal is available — this is normal, just wait.
    ```sh
    export SVODKA_TELEGRAM_API_ID=<api_id>
    export SVODKA_TELEGRAM_API_HASH=<api_hash>
