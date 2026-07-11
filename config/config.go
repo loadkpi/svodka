@@ -39,12 +39,16 @@ type Settings struct {
 	// Routes, when non-empty, runs one digest per route (different source chats
 	// to different target chats in a single run). When empty, the top-level
 	// source_chats/target_chat form a single implicit route (ADR-19).
-	Routes          []Route `yaml:"routes"`
-	WindowHours     int     `yaml:"window_hours"`
-	OutputLang      string  `yaml:"output_lang"`
-	Timezone        string  `yaml:"timezone"`
-	Model           string  `yaml:"model"`
-	MaxOutputTokens int     `yaml:"max_output_tokens"`
+	Routes      []Route `yaml:"routes"`
+	WindowHours int     `yaml:"window_hours"`
+	OutputLang  string  `yaml:"output_lang"`
+	Timezone    string  `yaml:"timezone"`
+	// LLMProvider selects the Provider implementation: "anthropic" (default) or
+	// "openrouter" (ADR-20). Model and MaxOutputTokens are shared across
+	// providers; only their meaning (model id format, key used) changes.
+	LLMProvider     string `yaml:"llm_provider"`
+	Model           string `yaml:"model"`
+	MaxOutputTokens int    `yaml:"max_output_tokens"`
 	// ExtraInstructions is optional free-text guidance appended to the digest
 	// prompt (tone, structure, what to emphasize). Empty = default behavior.
 	ExtraInstructions string `yaml:"extra_instructions"`
@@ -66,6 +70,9 @@ type Secrets struct {
 	Anthropic struct {
 		Key string `conf:"env:ANTHROPIC_KEY,mask,help:Anthropic API key"`
 	}
+	OpenRouter struct {
+		Key string `conf:"env:OPENROUTER_KEY,mask,help:OpenRouter API key"`
+	}
 }
 
 // Overrides are optional CLI flags that take precedence over config.yml for a
@@ -79,6 +86,7 @@ type Overrides struct {
 	WindowHours       *int      `conf:"flag:window-hours,help:override window_hours"`
 	OutputLang        *string   `conf:"flag:output-lang,help:override output_lang"`
 	Timezone          *string   `conf:"flag:timezone,help:override timezone"`
+	LLMProvider       *string   `conf:"flag:llm-provider,help:override llm_provider (anthropic|openrouter)"`
 	Model             *string   `conf:"flag:model,help:override model"`
 	MaxOutputTokens   *int      `conf:"flag:max-output-tokens,help:override max_output_tokens"`
 	ExtraInstructions *string   `conf:"flag:extra-instructions,help:override extra_instructions"`
@@ -125,6 +133,43 @@ func LoadSecrets() (Secrets, error) {
 // config.yml, applies defaults to unset settings, then overrides on top, and
 // validates the result for the svodka job.
 func Load() (*Config, error) {
+	cfg, err := load()
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// LoadForCapture parses and assembles the config exactly like Load, but skips
+// validateLLM: eval's capture subcommand only resolves and fetches chats (it
+// never calls an LLM), so requiring an Anthropic/OpenRouter key here would
+// force users to hold a provider key just to snapshot messages (ADR-21).
+func LoadForCapture() (*Config, error) {
+	cfg, err := load()
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.validateTelegram(); err != nil {
+		return nil, err
+	}
+	if err := cfg.validateRoutes(); err != nil {
+		return nil, err
+	}
+	if err := cfg.validateWindow(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// load parses secrets and CLI overrides from env/flags, content settings from
+// config.yml, applies defaults to unset settings, then overrides on top. It
+// does not validate the result: callers pick which validation applies to
+// their command (Load validates everything; LoadForCapture skips the LLM
+// check).
+func load() (*Config, error) {
 	// Secrets and Overrides share one conf parse so a single pass over os.Args
 	// handles both and --help lists every flag (no second flag parser to clash).
 	var args struct {
@@ -143,11 +188,7 @@ func Load() (*Config, error) {
 	applyDefaults(&settings)
 	applyOverrides(&settings, args.Overrides)
 
-	cfg := &Config{Secrets: args.Secrets, Settings: settings}
-	if err := cfg.validate(); err != nil {
-		return nil, err
-	}
-	return cfg, nil
+	return &Config{Secrets: args.Secrets, Settings: settings}, nil
 }
 
 func loadSettings(path string) (Settings, error) {
@@ -179,7 +220,12 @@ func applyDefaults(s *Settings) {
 	if s.Timezone == "" {
 		s.Timezone = "UTC"
 	}
-	if s.Model == "" {
+	if s.LLMProvider == "" {
+		s.LLMProvider = "anthropic"
+	}
+	// The built-in default model is an Anthropic id; openrouter has no sane
+	// default (models are "vendor/model") so validate() requires it explicit.
+	if s.Model == "" && s.LLMProvider == "anthropic" {
 		s.Model = "claude-sonnet-4-6"
 	}
 	if s.MaxOutputTokens == 0 {
@@ -209,6 +255,9 @@ func applyOverrides(s *Settings, ov Overrides) {
 	}
 	if ov.Timezone != nil {
 		s.Timezone = *ov.Timezone
+	}
+	if ov.LLMProvider != nil {
+		s.LLMProvider = *ov.LLMProvider
 	}
 	if ov.Model != nil {
 		s.Model = *ov.Model
@@ -257,13 +306,58 @@ func (s Settings) EffectiveRoutes() []Route {
 	return out
 }
 
+// validate runs every check required for the svodka job, in the same order
+// the checks used to run before being split out (so error precedence, and
+// therefore which message a given invalid config surfaces, is unchanged).
 func (c *Config) validate() error {
+	if err := c.validateTelegram(); err != nil {
+		return err
+	}
+	if err := c.validateLLM(); err != nil {
+		return err
+	}
+	if err := c.validateRoutes(); err != nil {
+		return err
+	}
+	if err := c.validateWindow(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateTelegram requires a Telegram session. Needed by every command that
+// talks to Telegram, including eval capture.
+func (c *Config) validateTelegram() error {
 	if c.Telegram.Session == "" {
 		return errors.New("no Telegram session: run `go run ./api/cmd/login` (e.g. in a Codespace) to create SVODKA_TELEGRAM_SESSION")
 	}
-	if c.Anthropic.Key == "" {
-		return errors.New("SVODKA_ANTHROPIC_KEY is not set")
+	return nil
+}
+
+// validateLLM requires a key for the selected provider (and, for openrouter,
+// an explicit model). Skipped by LoadForCapture: capture never calls an LLM.
+func (c *Config) validateLLM() error {
+	switch c.LLMProvider {
+	case "anthropic":
+		if c.Anthropic.Key == "" {
+			return errors.New("SVODKA_ANTHROPIC_KEY is not set")
+		}
+	case "openrouter":
+		if c.OpenRouter.Key == "" {
+			return errors.New("SVODKA_OPENROUTER_KEY is not set")
+		}
+		if c.Model == "" {
+			return errors.New(`model is required in config.yml when llm_provider is "openrouter" (format "vendor/model", e.g. "openai/gpt-5")`)
+		}
+	default:
+		return fmt.Errorf(`llm_provider must be "anthropic" or "openrouter", got %q`, c.LLMProvider)
 	}
+	return nil
+}
+
+// validateRoutes requires every effective route to have at least one source
+// chat.
+func (c *Config) validateRoutes() error {
 	for i, r := range c.EffectiveRoutes() {
 		if len(r.SourceChats) == 0 {
 			if len(c.Routes) == 0 {
@@ -272,6 +366,11 @@ func (c *Config) validate() error {
 			return fmt.Errorf("routes[%d] has empty source_chats in config.yml", i)
 		}
 	}
+	return nil
+}
+
+// validateWindow requires a non-negative window.
+func (c *Config) validateWindow() error {
 	if c.WindowHours < 0 {
 		return fmt.Errorf("window_hours must be >= 0, got %d", c.WindowHours)
 	}

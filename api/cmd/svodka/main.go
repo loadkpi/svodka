@@ -61,10 +61,28 @@ func run(ctx context.Context, log *logger.Logger) error {
 		// and Actions logs may be visible to others on a forked template.
 		log.Info(ctx, "telegram authorized", "user_id", status.User.GetID())
 
+		provider, err := newProvider(cfg)
+		if err != nil {
+			return err
+		}
 		return summarize.Run(ctx, api, summarize.Deps{
 			Log:      log,
 			Cfg:      cfg,
-			Provider: llm.NewClaude(cfg.Anthropic.Key),
+			Provider: provider,
 		})
 	})
+}
+
+// newProvider picks the llm.Provider implementation for the configured
+// vendor (ADR-20). The default case is unreachable after config.validate()
+// rejects unknown llm_provider values, but errors instead of panicking.
+func newProvider(cfg *config.Config) (llm.Provider, error) {
+	switch cfg.LLMProvider {
+	case "anthropic":
+		return llm.NewClaude(cfg.Anthropic.Key), nil
+	case "openrouter":
+		return llm.NewOpenRouter(cfg.OpenRouter.Key), nil
+	default:
+		return nil, fmt.Errorf("unknown llm_provider %q", cfg.LLMProvider)
+	}
 }

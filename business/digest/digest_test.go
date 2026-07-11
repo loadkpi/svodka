@@ -53,18 +53,21 @@ func TestLinkFor(t *testing.T) {
 	tests := []struct {
 		name      string
 		channelID int64
+		username  string
 		msgID     int
 		want      string
 	}{
-		{"channel and msg", 123, 456, "https://t.me/c/123/456"},
-		{"no channel (user/basic group)", 0, 456, ""},
-		{"no msg id", 123, 0, ""},
-		{"negative channel", -1, 456, ""},
+		{"channel and msg, no username -> private link", 123, "", 456, "https://t.me/c/123/456"},
+		{"channel with username -> public link", 123, "netology", 456, "https://t.me/netology/456"},
+		{"no channel (user/basic group), no username", 0, "", 456, ""},
+		{"user with username but no channel id -> still no link", 0, "durov", 456, ""},
+		{"no msg id", 123, "", 0, ""},
+		{"negative channel", -1, "", 456, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := linkFor(tt.channelID, tt.msgID); got != tt.want {
-				t.Errorf("linkFor(%d, %d) = %q, want %q", tt.channelID, tt.msgID, got, tt.want)
+			if got := linkFor(tt.channelID, tt.username, tt.msgID); got != tt.want {
+				t.Errorf("linkFor(%d, %q, %d) = %q, want %q", tt.channelID, tt.username, tt.msgID, got, tt.want)
 			}
 		})
 	}
@@ -88,6 +91,11 @@ func TestSerializeChatBacklinks(t *testing.T) {
 	plain := telegram.ChatMessages{Title: "DM", ChannelID: 0, Messages: []telegram.Message{m}}
 	if got, want := serializeChat(plain, loc, true), "## DM\n[14:32] Alice: hello\n"; got != want {
 		t.Fatalf("no channel id\n got: %q\nwant: %q", got, want)
+	}
+	// Channel with a public username: backlink uses the public form (M28).
+	public := telegram.ChatMessages{Title: "Public", ChannelID: 123, Username: "netology", Messages: []telegram.Message{m}}
+	if got, want := serializeChat(public, loc, true), "## Public\n[14:32] Alice: hello https://t.me/netology/42\n"; got != want {
+		t.Fatalf("public username backlink\n got: %q\nwant: %q", got, want)
 	}
 }
 

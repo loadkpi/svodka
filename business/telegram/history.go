@@ -25,10 +25,13 @@ type Message struct {
 // ChatMessages is the messages of one source chat within the time window, in
 // chronological order (oldest first). ChannelID is the raw channel/supergroup id
 // (no -100 prefix) used for t.me/c backlinks; it is 0 for users and basic groups,
-// which have no addressable per-message link (M13, ADR-15).
+// which have no addressable per-message link (M13, ADR-15). Username is the
+// chat's public @username if it has one, used to build a public
+// t.me/<username>/<msg> backlink instead of the private form (M28).
 type ChatMessages struct {
 	Title     string
 	ChannelID int64
+	Username  string
 	Messages  []Message
 }
 
@@ -36,7 +39,7 @@ type ChatMessages struct {
 // chronologically ordered messages. Telegram returns history newest-first, so
 // the walk stops at the first message older than since.
 func FetchWindow(ctx context.Context, api *tg.Client, p Peer, since time.Time) (ChatMessages, error) {
-	cm := ChatMessages{Title: p.Title}
+	cm := ChatMessages{Title: p.Title, Username: p.Username}
 	if ch, ok := p.Input.(*tg.InputPeerChannel); ok {
 		cm.ChannelID = ch.ChannelID
 	}
@@ -53,7 +56,10 @@ func FetchWindow(ctx context.Context, api *tg.Client, p Peer, since time.Time) (
 		}
 	}
 	if err := iter.Err(); err != nil {
-		return ChatMessages{}, fmt.Errorf("fetch history for %q: %w", p.Title, err)
+		// No title in the error: it crosses the business->app boundary and
+		// would otherwise leak which chat is tracked into logs (NFR-2). The
+		// caller has chat_index for context.
+		return ChatMessages{}, fmt.Errorf("fetch history: %w", err)
 	}
 
 	reverse(cm.Messages)

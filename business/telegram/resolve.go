@@ -20,12 +20,21 @@ import (
 type Peer struct {
 	Input tg.InputPeerClass
 	Title string
+	// Username is the peer's public @username, or "" if it has none. Used to
+	// build a public t.me/<username>/<msg> backlink instead of the private
+	// t.me/c/<id>/<msg> form (M28).
+	Username string
 }
 
 // ErrInviteLink is returned when a source chat is given as an invite link.
 // Resolving it would require joining the chat, which is an unwanted side effect
 // of a scheduled run, so invite links are rejected (see ADR-8).
 var ErrInviteLink = errors.New("invite links are not supported; add the chat by @username or numeric id")
+
+// errChatIDNotFound is returned when a numeric chat id has no match in the
+// scanned dialogs. No id in the message: it crosses the business->app
+// boundary (NFR-2); the caller has chat_index for context.
+var errChatIDNotFound = errors.New("chat id not found among your dialogs (join it or use @username)")
 
 // Resolver turns config chat references (@username, t.me links, numeric ids)
 // into peers. A single Resolver is built per run so the peers.Manager cache and
@@ -62,23 +71,27 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) (Peer, error) {
 	}
 	p, err := r.manager.Resolve(ctx, value)
 	if err != nil {
-		return Peer{}, fmt.Errorf("resolve %q: %w", value, err)
+		// No ref in the error: it crosses the business->app boundary and would
+		// otherwise leak which chats are tracked into logs (NFR-2). The caller
+		// has chat_index for context.
+		return Peer{}, fmt.Errorf("resolve chat: %w", err)
 	}
-	return Peer{Input: p.InputPeer(), Title: p.VisibleName()}, nil
+	username, _ := p.Username()
+	return Peer{Input: p.InputPeer(), Title: p.VisibleName(), Username: username}, nil
 }
 
 // resolveNumeric looks a TDLib peer id up in the lazily-scanned dialog map.
 func (r *Resolver) resolveNumeric(ctx context.Context, value string) (Peer, error) {
 	id, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		return Peer{}, fmt.Errorf("invalid numeric chat id %q: %w", value, err)
+		return Peer{}, fmt.Errorf("invalid numeric chat id: %w", err)
 	}
 	if err := r.ensureDialogs(ctx); err != nil {
-		return Peer{}, fmt.Errorf("scan dialogs for id %d: %w", id, err)
+		return Peer{}, fmt.Errorf("scan dialogs: %w", err)
 	}
 	p, ok := r.dialogByID[id]
 	if !ok {
-		return Peer{}, fmt.Errorf("chat id %d not found among your dialogs (join it or use @username)", id)
+		return Peer{}, errChatIDNotFound
 	}
 	return p, nil
 }
@@ -95,7 +108,7 @@ func (r *Resolver) ensureDialogs(ctx context.Context) error {
 		if !ok {
 			return nil
 		}
-		byID[id] = Peer{Input: e.Peer, Title: dialogTitle(e)}
+		byID[id] = Peer{Input: e.Peer, Title: dialogTitle(e), Username: dialogUsername(e)}
 		return nil
 	})
 	if err != nil {
@@ -138,6 +151,28 @@ func dialogTitle(e dialogs.Elem) string {
 	case *tg.InputPeerChannel:
 		if c, ok := e.Entities.Channel(v.ChannelID); ok {
 			return c.Title
+		}
+	}
+	return ""
+}
+
+// dialogUsername reads the peer's main public @username from a dialog's
+// entities, or "" if it has none (basic groups never have one; users and
+// channels may go without). Only the user/channel peer kinds carry a username
+// (M28).
+func dialogUsername(e dialogs.Elem) string {
+	switch v := e.Peer.(type) {
+	case *tg.InputPeerUser:
+		if u, ok := e.Entities.User(v.UserID); ok {
+			if username, ok := u.GetUsername(); ok {
+				return username
+			}
+		}
+	case *tg.InputPeerChannel:
+		if c, ok := e.Entities.Channel(v.ChannelID); ok {
+			if username, ok := c.GetUsername(); ok {
+				return username
+			}
 		}
 	}
 	return ""

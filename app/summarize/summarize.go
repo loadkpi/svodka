@@ -110,10 +110,18 @@ func runRoute(ctx context.Context, api *tg.Client, resolver *telegram.Resolver, 
 		d.Log.Warn(ctx, "digest truncated at max_output_tokens; raise max_output_tokens or narrow the window",
 			"route", idx, "max_output_tokens", d.Cfg.MaxOutputTokens, "tokens_out", usage.OutputTokens)
 	}
+	if usage.LinksRemoved > 0 {
+		// The model emitted a backlink that did not match an actual message in
+		// the input (e.g. a misquoted digit); the sanitizeLinks guard (M27)
+		// dropped it. Counter only, no content (NFR-2).
+		d.Log.Warn(ctx, "digest had invalid backlinks removed",
+			"route", idx, "links_removed", usage.LinksRemoved)
+	}
 	d.Log.Info(ctx, "digest built",
 		"route", idx,
 		"digest_chars", runeLen(text),
 		"tokens_in", usage.InputTokens, "tokens_out", usage.OutputTokens,
+		"links_removed", usage.LinksRemoved,
 		"llm_ms", time.Since(llmStart).Milliseconds())
 
 	sendStart := time.Now()

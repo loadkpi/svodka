@@ -74,11 +74,21 @@ svodka заходит в Telegram **под вами** (юзербот на MTPro
 | `window_hours` | `24` | На сколько часов назад читать. |
 | `output_lang` | `"ru"` | Язык дайджеста (ISO 639-1, напр. `ru`, `en`). |
 | `timezone` | `"UTC"` | IANA-таймзона для времени в дайджесте (в примере — `Europe/Belgrade`). |
-| `model` | `"claude-sonnet-4-6"` | Id модели Anthropic (дешевле ↔ лучше): `claude-haiku-4-5` (дешевле/быстрее, ок для большинства сводок) · `claude-sonnet-4-6` (баланс) · `claude-opus-4-8` (макс. качество). |
+| `llm_provider` | `"anthropic"` | LLM-бэкенд: `anthropic` (прямой API, дефолт) или `openrouter` (один ключ — сотни моделей через OpenAI-совместимый API OpenRouter; нужен секрет `SVODKA_OPENROUTER_KEY`). |
+| `model` | `"claude-sonnet-4-6"` | При `anthropic` — id модели Anthropic (дешевле ↔ лучше): `claude-haiku-4-5` (дешевле/быстрее, ок для большинства сводок) · `claude-sonnet-4-6` (баланс) · `claude-opus-4-8` (макс. качество). При `openrouter` — **обязателен**, slug `vendor/model` из [openrouter.ai/models](https://openrouter.ai/models) (напр. `openai/gpt-5`). |
 | `max_output_tokens` | `2000` | Бюджет токенов на вывод саммари. |
 | `extra_instructions` | `""` | Необязательная свободная инструкция к промпту дайджеста (тон, структура, акценты). Пусто = дефолт; правила формата Telegram остаются в приоритете. |
-| `backlinks` | `true` | Добавлять ссылки `t.me/c` на исходные сообщения, чтобы прыгнуть в первоисточник. Только каналы/супергруппы; приватная ссылка откроется **только у участника** этого чата. `false` — отключить. |
+| `backlinks` | `true` | Добавлять ссылки на исходные сообщения, чтобы прыгнуть в первоисточник. Только каналы/супергруппы. Для канала с публичным @username — публичная ссылка `t.me/<username>/<msg>`, открывается всем; без юзернейма — прежняя приватная `t.me/c/<id>/<msg>`, открывается **только у участника** этого чата. `false` — отключить. |
 | `routes` | — (необязательно) | Несколько дайджестов за прогон: список `{source_chats, target_chat}`. См. [Несколько дайджестов](#несколько-дайджестов-routes) ниже. |
+
+### Выбор LLM-провайдера
+
+`anthropic` (дефолт) ходит в Anthropic API напрямую и работает из коробки с
+`SVODKA_ANTHROPIC_KEY`. Задайте `llm_provider: openrouter`, чтобы гнать ту же
+суммаризацию через [OpenRouter](https://openrouter.ai): один секрет
+`SVODKA_OPENROUTER_KEY` открывает сотни моделей — удобно для экспериментов с
+качеством и ценой. С OpenRouter поле `model` обязательно и использует формат slug
+`vendor/model` (напр. `openai/gpt-5`, `google/gemini-2.5-pro`).
 
 ### Несколько дайджестов (`routes`)
 
@@ -119,6 +129,27 @@ go run ./api/cmd/svodka \
 `--extra-instructions`, `--backlinks`, `--source-chats`); полный список — `--help`. **Прогон по
 расписанию в GitHub Actions использует `config.yml`** — флаги нужны только локально.
 
+### Сравнение моделей (локально)
+
+`go run ./api/cmd/eval` сравнивает качество/цену дайджеста между моделями на одинаковом
+входе, полностью локально — в Telegram ничего не отправляется. `capture` переиспользует
+ту же Telegram-сессию/конфиг, что и основной джоб (ключ LLM не нужен), и замораживает
+текущее окно в файл-снапшот; `run` затем строит дайджест для каждой модели-кандидата по
+этому снапшоту, так что все модели видят байт-идентичный вход:
+
+```sh
+go run ./api/cmd/eval capture --config config.local.yml --window-hours 24
+
+SVODKA_OPENROUTER_KEY=... go run ./api/cmd/eval run \
+  --snapshot eval/capture-20260711-120000.json \
+  --models "openai/gpt-5,google/gemini-2.5-pro,anthropic/claude-sonnet-4-6"
+```
+
+Для `run` нужен `SVODKA_OPENROUTER_KEY`: все кандидаты идут через OpenRouter независимо от
+вендора, включая модели Anthropic через неймспейс `anthropic/...`. Весь вывод — снапшоты,
+дайджесты по моделям и сводная таблица — попадает в gitignored-папку `eval/` и никогда не
+коммитится.
+
 ## Секреты
 
 Все секреты — это секреты GitHub Actions с префиксом `SVODKA_`. Они никогда не
@@ -129,7 +160,8 @@ go run ./api/cmd/svodka \
 | `SVODKA_TELEGRAM_API_ID` | my.telegram.org | целое число |
 | `SVODKA_TELEGRAM_API_HASH` | my.telegram.org | держать в тайне |
 | `SVODKA_TELEGRAM_SESSION` | создаётся командой `login` | **полный доступ к аккаунту** — никому не передавать |
-| `SVODKA_ANTHROPIC_KEY` | console.anthropic.com | ключ Anthropic API |
+| `SVODKA_ANTHROPIC_KEY` | console.anthropic.com | ключ Anthropic API (нужен при дефолтном `llm_provider: anthropic`) |
+| `SVODKA_OPENROUTER_KEY` | openrouter.ai/keys | *опционально* — только при `llm_provider: openrouter` |
 
 > **Про имя переменной.** Конфиг-ридер добавляет префикс `SVODKA_` сам, поэтому ошибка
 > о пропущенном значении может показать тег без префикса, например

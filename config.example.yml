@@ -35,6 +35,11 @@ output_lang: "ru"
 # IANA timezone used for date wording in the digest header.
 timezone: "Europe/Belgrade"
 
+# LLM provider: "anthropic" (default) or "openrouter" (one key, many models via
+# OpenRouter's OpenAI-compatible API; needs the SVODKA_OPENROUTER_KEY secret).
+# llm_provider: openrouter
+# model: "openai/gpt-5"        # required for openrouter, "vendor/model" slug
+
 # Anthropic model id (cheaper <-> better):
 #   claude-haiku-4-5   - cheapest & fastest, fine for most digests
 #   claude-sonnet-4-6  - balanced quality/cost (default)

@@ -16,6 +16,7 @@ func baseline() Settings {
 		WindowHours:       24,
 		OutputLang:        "ru",
 		Timezone:          "Europe/Belgrade",
+		LLMProvider:       "anthropic",
 		Model:             "claude-sonnet-4-6",
 		MaxOutputTokens:   2000,
 		ExtraInstructions: "from yaml",
@@ -39,6 +40,7 @@ func TestApplyOverrides_EachFieldApplied(t *testing.T) {
 		WindowHours:       ptr(72),
 		OutputLang:        ptr("en"),
 		Timezone:          ptr("UTC"),
+		LLMProvider:       ptr("openrouter"),
 		Model:             ptr("claude-haiku-4-5"),
 		MaxOutputTokens:   ptr(500),
 		ExtraInstructions: ptr("be terse"),
@@ -50,6 +52,7 @@ func TestApplyOverrides_EachFieldApplied(t *testing.T) {
 		WindowHours:       72,
 		OutputLang:        "en",
 		Timezone:          "UTC",
+		LLMProvider:       "openrouter",
 		Model:             "claude-haiku-4-5",
 		MaxOutputTokens:   500,
 		ExtraInstructions: "be terse",
@@ -103,6 +106,36 @@ func TestApplyDefaults_Backlinks(t *testing.T) {
 	})
 }
 
+// LLMProvider defaults to "anthropic"; the built-in default Model only applies
+// for that provider — openrouter model ids ("vendor/model") have no sane
+// built-in default, so validate() requires them explicit (ADR-20).
+func TestApplyDefaults_LLMProvider(t *testing.T) {
+	t.Run("absent provider defaults to anthropic with default model", func(t *testing.T) {
+		s := Settings{}
+		applyDefaults(&s)
+		if s.LLMProvider != "anthropic" {
+			t.Errorf("LLMProvider = %q, want %q", s.LLMProvider, "anthropic")
+		}
+		if s.Model != "claude-sonnet-4-6" {
+			t.Errorf("Model = %q, want default anthropic model", s.Model)
+		}
+	})
+	t.Run("openrouter provider does not get the anthropic default model", func(t *testing.T) {
+		s := Settings{LLMProvider: "openrouter"}
+		applyDefaults(&s)
+		if s.Model != "" {
+			t.Errorf("Model = %q, want empty (no default for openrouter)", s.Model)
+		}
+	})
+	t.Run("openrouter provider keeps an explicit model", func(t *testing.T) {
+		s := Settings{LLMProvider: "openrouter", Model: "openai/gpt-5"}
+		applyDefaults(&s)
+		if s.Model != "openai/gpt-5" {
+			t.Errorf("Model = %q, want %q", s.Model, "openai/gpt-5")
+		}
+	})
+}
+
 func TestEffectiveRoutes(t *testing.T) {
 	t.Run("no routes synthesizes single from top-level", func(t *testing.T) {
 		s := Settings{SourceChats: []string{"@a", "@b"}, TargetChat: "@group"}
@@ -142,6 +175,7 @@ func TestEffectiveRoutes(t *testing.T) {
 func TestValidateRoutes(t *testing.T) {
 	// A Config that is valid apart from the source-chat shape under test.
 	newCfg := func(s Settings) *Config {
+		s.LLMProvider = "anthropic"
 		c := &Config{Settings: s}
 		c.Telegram.Session = "sess"
 		c.Anthropic.Key = "key"
@@ -173,6 +207,48 @@ func TestValidateRoutes(t *testing.T) {
 			t.Error("want error for route with empty source_chats, got nil")
 		}
 	})
+}
+
+// validate() requires the key of the *selected* provider only, and an explicit
+// "vendor/model" Model for openrouter (no built-in default fits) — ADR-20.
+func TestValidateLLMProvider(t *testing.T) {
+	// A Config that is valid apart from the provider/key/model shape under test.
+	newCfg := func(provider, anthropicKey, openRouterKey, model string) *Config {
+		c := &Config{Settings: Settings{
+			SourceChats: []string{"@a"},
+			LLMProvider: provider,
+			Model:       model,
+		}}
+		c.Telegram.Session = "sess"
+		c.Anthropic.Key = anthropicKey
+		c.OpenRouter.Key = openRouterKey
+		return c
+	}
+
+	tests := []struct {
+		name    string
+		cfg     *Config
+		wantErr bool
+	}{
+		{"anthropic with key ok", newCfg("anthropic", "key", "", "claude-sonnet-4-6"), false},
+		{"anthropic without key errors", newCfg("anthropic", "", "", "claude-sonnet-4-6"), true},
+		{"anthropic ignores missing openrouter key", newCfg("anthropic", "key", "", "claude-sonnet-4-6"), false},
+		{"openrouter with key and model ok", newCfg("openrouter", "", "or-key", "openai/gpt-5"), false},
+		{"openrouter without key errors", newCfg("openrouter", "", "", "openai/gpt-5"), true},
+		{"openrouter without model errors", newCfg("openrouter", "", "or-key", ""), true},
+		{"unknown provider errors", newCfg("ollama", "key", "or-key", "m"), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.validate()
+			if tt.wantErr && err == nil {
+				t.Error("want error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
 }
 
 func TestSplitChats(t *testing.T) {

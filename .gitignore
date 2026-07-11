@@ -20,6 +20,11 @@ config.*.yml
 # writing to ~/.config with the tilde unexpanded). Never a real project path.
 /~/
 
+# eval command output (captured Telegram content + generated digests, NFR-2).
+# Anchored to the repo root so it doesn't also match api/cmd/eval/, the tool's
+# source directory.
+/eval/
+
 # Build output
 bin/
 /svodka

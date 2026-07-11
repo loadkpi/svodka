@@ -44,11 +44,15 @@ type Options struct {
 
 // Usage aggregates token accounting across every LLM call Build made (one for a
 // small day, N maps + 1 reduce for a large one). Truncated is set if any call
-// stopped at MaxTokens, meaning the digest is likely cut off.
+// stopped at MaxTokens, meaning the digest is likely cut off. LinksRemoved
+// counts backlinks stripped by the sanitizeLinks guard (M27) — a non-zero
+// value means the model emitted a link that did not match an actual
+// (channel, message) pair from the input.
 type Usage struct {
 	InputTokens  int
 	OutputTokens int
 	Truncated    bool
+	LinksRemoved int
 }
 
 func (u *Usage) add(r llm.Result) {
@@ -78,14 +82,41 @@ func Build(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, o
 	}
 
 	full := serializeAll(chats, loc, opts.Backlinks)
+	valid := validLinks(chats)
 	if !useMapReduce(full, threshold) {
-		return single(ctx, p, full, opts)
+		return single(ctx, p, full, opts, valid)
 	}
-	return mapReduce(ctx, p, chats, opts, loc)
+	return mapReduce(ctx, p, chats, opts, loc, valid)
+}
+
+// validLinks collects every backlink URL that linkFor would actually build for
+// the input (public or private form, matching each chat's username), so
+// sanitizeLinks can tell a genuine backlink from a misquoted one (M27, M28).
+// Chats with ChannelID == 0 (users/basic groups) have no addressable backlink
+// and are skipped, matching linkFor.
+func validLinks(chats []telegram.ChatMessages) map[string]bool {
+	valid := make(map[string]bool)
+	for _, c := range chats {
+		for _, m := range c.Messages {
+			// A t.me post link quoted inside a message is legitimate content
+			// the model may keep — allow it verbatim so the guard only ever
+			// strips links that appeared in neither form of the input.
+			for _, quoted := range backlinkRe.FindAllString(m.Text, -1) {
+				valid[quoted] = true
+			}
+			if c.ChannelID == 0 {
+				continue
+			}
+			if l := linkFor(c.ChannelID, c.Username, m.ID); l != "" {
+				valid[l] = true
+			}
+		}
+	}
+	return valid
 }
 
 // single summarizes the whole day in one call.
-func single(ctx context.Context, p llm.Provider, userText string, opts Options) (string, Usage, error) {
+func single(ctx context.Context, p llm.Provider, userText string, opts Options, valid map[string]bool) (string, Usage, error) {
 	r, err := p.Summarize(ctx, llm.Input{
 		System:    singleSystem(opts.OutputLang, opts.ExtraInstructions),
 		User:      userText,
@@ -97,13 +128,15 @@ func single(ctx context.Context, p llm.Provider, userText string, opts Options) 
 	}
 	var u Usage
 	u.add(r)
-	return strings.TrimSpace(r.Text), u, nil
+	text, removed := sanitizeLinks(r.Text, valid)
+	u.LinksRemoved = removed
+	return strings.TrimSpace(text), u, nil
 }
 
 // mapReduce summarizes each chat on its own (map) and then stitches the per-chat
 // summaries into the final digest (reduce). The map system prompt is built once
 // and reused byte-for-byte across every map call so prompt caching can kick in.
-func mapReduce(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, opts Options, loc *time.Location) (string, Usage, error) {
+func mapReduce(ctx context.Context, p llm.Provider, chats []telegram.ChatMessages, opts Options, loc *time.Location, valid map[string]bool) (string, Usage, error) {
 	sys := mapSystem(opts.OutputLang)
 
 	var u Usage
@@ -146,7 +179,9 @@ func mapReduce(ctx context.Context, p llm.Provider, chats []telegram.ChatMessage
 		return "", Usage{}, fmt.Errorf("digest reduce: %w", err)
 	}
 	u.add(r)
-	return strings.TrimSpace(r.Text), u, nil
+	text, removed := sanitizeLinks(r.Text, valid)
+	u.LinksRemoved = removed
+	return strings.TrimSpace(text), u, nil
 }
 
 // nonEmpty drops chats that have no messages, without mutating the input.

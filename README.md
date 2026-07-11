@@ -73,11 +73,21 @@ here. See [`config.example.yml`](config.example.yml) for a documented example.
 | `window_hours` | `24` | How far back to read, in hours. |
 | `output_lang` | `"ru"` | Digest language (ISO 639-1, e.g. `ru`, `en`). |
 | `timezone` | `"UTC"` | IANA timezone for time wording in the digest (the example uses `Europe/Belgrade`). |
-| `model` | `"claude-sonnet-4-6"` | Anthropic model id (cheaper ↔ better): `claude-haiku-4-5` (cheapest/fastest, fine for most digests) · `claude-sonnet-4-6` (balanced) · `claude-opus-4-8` (highest quality). |
+| `llm_provider` | `"anthropic"` | LLM backend: `anthropic` (direct API, default) or `openrouter` (one key, hundreds of models via OpenRouter's OpenAI-compatible API; needs `SVODKA_OPENROUTER_KEY`). |
+| `model` | `"claude-sonnet-4-6"` | With `anthropic` — an Anthropic model id (cheaper ↔ better): `claude-haiku-4-5` (cheapest/fastest, fine for most digests) · `claude-sonnet-4-6` (balanced) · `claude-opus-4-8` (highest quality). With `openrouter` — **required**, a `vendor/model` slug from [openrouter.ai/models](https://openrouter.ai/models) (e.g. `openai/gpt-5`). |
 | `max_output_tokens` | `2000` | Output token budget for the summary. |
 | `extra_instructions` | `""` | Optional free-text guidance appended to the digest prompt (tone, structure, what to emphasize). Empty = default; Telegram formatting rules still win. |
-| `backlinks` | `true` | Add `t.me/c` source links to digest items so you can jump to the original message. Channels/supergroups only; a private link opens **only for members** of that chat. Set `false` to disable. |
+| `backlinks` | `true` | Add source links to digest items so you can jump to the original message. Channels/supergroups only. A channel with a public @username gets a public `t.me/<username>/<msg>` link, openable by anyone; without one, a private `t.me/c/<id>/<msg>` link that opens **only for members** of that chat. Set `false` to disable. |
 | `routes` | — (optional) | Fan out several digests in one run: a list of `{source_chats, target_chat}`. See [Multiple digests](#multiple-digests-routes) below. |
+
+### Choosing the LLM provider
+
+`anthropic` (default) talks to the Anthropic API directly and works out of the box with
+`SVODKA_ANTHROPIC_KEY`. Set `llm_provider: openrouter` to route the same summarization
+through [OpenRouter](https://openrouter.ai) instead: one `SVODKA_OPENROUTER_KEY` secret
+unlocks hundreds of models, which is handy for experimenting with quality vs cost. With
+OpenRouter, `model` is required and uses the `vendor/model` slug format (e.g.
+`openai/gpt-5`, `google/gemini-2.5-pro`).
 
 ### Multiple digests (`routes`)
 
@@ -118,6 +128,27 @@ effect (an unset flag changes nothing). Every setting has a kebab-case flag
 list them. The **scheduled run in GitHub Actions uses `config.yml`** — flags are a local
 convenience only.
 
+### Comparing models locally (eval)
+
+`go run ./api/cmd/eval` compares digest quality/cost across models on an identical input,
+entirely locally — it never posts to Telegram. `capture` reuses the same Telegram
+session/config as the main job (no LLM key needed) to freeze the current window into a
+snapshot file; `run` then builds a digest per candidate model from that snapshot, so every
+model sees byte-identical input:
+
+```sh
+go run ./api/cmd/eval capture --config config.local.yml --window-hours 24
+
+SVODKA_OPENROUTER_KEY=... go run ./api/cmd/eval run \
+  --snapshot eval/capture-20260711-120000.json \
+  --models "openai/gpt-5,google/gemini-2.5-pro,anthropic/claude-sonnet-4-6"
+```
+
+`run` needs `SVODKA_OPENROUTER_KEY`: every candidate goes through OpenRouter regardless of
+vendor, including Anthropic models via the `anthropic/...` namespace. All output —
+snapshots, per-model digests, and the summary table — lands in the gitignored `eval/`
+directory and is never committed.
+
 ## Secrets
 
 All secrets are GitHub Actions secrets, prefixed with `SVODKA_`. They never appear in
@@ -128,7 +159,8 @@ All secrets are GitHub Actions secrets, prefixed with `SVODKA_`. They never appe
 | `SVODKA_TELEGRAM_API_ID` | my.telegram.org | integer |
 | `SVODKA_TELEGRAM_API_HASH` | my.telegram.org | keep private |
 | `SVODKA_TELEGRAM_SESSION` | produced by `login` | **full access to your account** — never share |
-| `SVODKA_ANTHROPIC_KEY` | console.anthropic.com | Anthropic API key |
+| `SVODKA_ANTHROPIC_KEY` | console.anthropic.com | Anthropic API key (needed with the default `llm_provider: anthropic`) |
+| `SVODKA_OPENROUTER_KEY` | openrouter.ai/keys | *optional* — only when `llm_provider: openrouter` |
 
 > **Heads-up on the variable name.** The config reader adds the `SVODKA_` prefix
 > automatically, so a missing-value error may print the bare tag, e.g.

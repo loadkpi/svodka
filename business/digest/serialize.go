@@ -37,7 +37,7 @@ func serializeChat(chat telegram.ChatMessages, loc *time.Location, backlinks boo
 		}
 		b.WriteString(m.Text)
 		if backlinks {
-			if link := linkFor(chat.ChannelID, m.ID); link != "" {
+			if link := linkFor(chat.ChannelID, chat.Username, m.ID); link != "" {
 				b.WriteByte(' ')
 				b.WriteString(link)
 			}
@@ -57,12 +57,20 @@ func serializeAll(chats []telegram.ChatMessages, loc *time.Location, backlinks b
 	return strings.Join(parts, "\n")
 }
 
-// linkFor builds the private message backlink, or "" when the chat is not a
+// linkFor builds the message backlink, or "" when the chat is not a
 // channel/supergroup (channelID 0) or the id is missing. Telegram auto-links the
-// bare URL; membership in the chat is required to open it (M13, ADR-15).
-func linkFor(channelID int64, msgID int) string {
+// bare URL. When the chat has a public username, the link is the public
+// https://t.me/<username>/<msg> form, open to anyone (M28); otherwise it falls
+// back to the private https://t.me/c/<channelID>/<msg> form, which requires
+// chat membership to open (M13, ADR-15). A username alone is not enough: user
+// chats and basic groups (channelID == 0) have no addressable per-message link
+// regardless of whether they carry a username.
+func linkFor(channelID int64, username string, msgID int) string {
 	if channelID <= 0 || msgID <= 0 {
 		return ""
+	}
+	if username != "" {
+		return fmt.Sprintf("https://t.me/%s/%d", username, msgID)
 	}
 	return fmt.Sprintf("https://t.me/c/%d/%d", channelID, msgID)
 }

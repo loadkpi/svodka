@@ -16,6 +16,7 @@ test: ## go test ./...
 build:
 	go build -o bin/svodka ./api/cmd/svodka
 	go build -o bin/login ./api/cmd/login
+	go build -o bin/eval ./api/cmd/eval
 
 run: ## go run svodka (требует M1)
 	go run ./api/cmd/svodka

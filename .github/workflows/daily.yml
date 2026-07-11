@@ -7,6 +7,8 @@
 #   SVODKA_TELEGRAM_API_HASH  - api_hash from my.telegram.org
 #   SVODKA_TELEGRAM_SESSION   - base64 session from `go run ./api/cmd/login`
 #   SVODKA_ANTHROPIC_KEY      - Anthropic API key
+#   SVODKA_OPENROUTER_KEY     - OpenRouter API key (optional, only when
+#                               config.yml sets llm_provider: openrouter)
 # Non-secret settings (chats, target, timezone, ...) live in config.yml,
 # which you edit directly in the web UI.
 #
@@ -25,20 +27,30 @@ permissions:
 
 jobs:
   digest:
-    if: ${{ !github.event.repository.is_template && secrets.SVODKA_TELEGRAM_API_ID != '' }}
+    # The `secrets` context is unavailable in jobs.<job_id>.if (it silently
+    # evaluates to an empty string, so the whole job would always be skipped —
+    # see actions/runner#520). Only the template check may live here; the
+    # "secrets are configured" check is done per step via the job env below.
+    if: ${{ !github.event.repository.is_template }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      HAS_SECRETS: ${{ secrets.SVODKA_TELEGRAM_API_ID != '' }}
     steps:
       - uses: actions/checkout@v6
+        if: env.HAS_SECRETS == 'true'
 
       - uses: actions/setup-go@v6
+        if: env.HAS_SECRETS == 'true'
         with:
           go-version-file: go.mod # single source of truth; cache is on by default
 
       - name: Run digest
+        if: env.HAS_SECRETS == 'true'
         env:
           SVODKA_TELEGRAM_API_ID: ${{ secrets.SVODKA_TELEGRAM_API_ID }}
           SVODKA_TELEGRAM_API_HASH: ${{ secrets.SVODKA_TELEGRAM_API_HASH }}
           SVODKA_TELEGRAM_SESSION: ${{ secrets.SVODKA_TELEGRAM_SESSION }}
           SVODKA_ANTHROPIC_KEY: ${{ secrets.SVODKA_ANTHROPIC_KEY }}
+          SVODKA_OPENROUTER_KEY: ${{ secrets.SVODKA_OPENROUTER_KEY }}
         run: go run ./api/cmd/svodka
