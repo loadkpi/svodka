@@ -37,7 +37,7 @@ jobs:
     env:
       HAS_SECRETS: ${{ secrets.SVODKA_TELEGRAM_API_ID != '' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: env.HAS_SECRETS == 'true'
 
       - uses: actions/setup-go@v6
