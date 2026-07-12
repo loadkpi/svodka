@@ -199,11 +199,30 @@ git merge template/main --allow-unrelated-histories   # --allow-unrelated-histor
 git push
 ```
 
+- **The first merge conflicts a lot — that's normal.** With unrelated histories
+  git treats every file both sides ever changed as an add/add conflict. Resolve
+  in bulk: take the **template** side for everything except the files you
+  customized:
+  ```sh
+  git diff --name-only --diff-filter=U | while read f; do
+    case "$f" in
+      config.yml|.github/workflows/daily.yml) git checkout --ours -- "$f";;
+      *) git checkout --theirs -- "$f";;
+    esac; git add "$f"
+  done
+  git commit
+  ```
+  Later merges share history and only conflict where you actually diverge.
 - **Keep your own `config.yml`.** It's the file you customized, so a merge will
   usually conflict there — resolve it by keeping **your** chats/targets while
   taking any new keys the update introduces (`git checkout --ours config.yml`
   keeps your version wholesale). Your **secrets are untouched** — they live in
   GitHub Secrets, not in the repo.
+- **If you changed the cron in `daily.yml`, it conflicts too.** Keep your
+  schedule, but compare against the template version afterwards: updates may add
+  new secret lines to the `Run digest` step's `env:` (e.g.
+  `SVODKA_OPENROUTER_KEY` appeared this way) — without them a newly configured
+  provider can't see its key.
 - Re-run the acceptance gate after merging (`make build && make vet && make test`)
   and trigger **Run workflow** with `target_chat: "me"` to confirm the update works
   before the next scheduled run.
