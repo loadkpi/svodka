@@ -3,7 +3,7 @@ module svodka
 go 1.25.0
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.47.0
+	github.com/anthropics/anthropic-sdk-go v1.57.0
 	github.com/ardanlabs/conf/v3 v3.12.0
 	github.com/gotd/contrib v0.21.1
 	github.com/gotd/td v0.144.0
