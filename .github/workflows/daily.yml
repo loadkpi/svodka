@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v6
         if: env.HAS_SECRETS == 'true'
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: env.HAS_SECRETS == 'true'
         with:
           go-version-file: go.mod # single source of truth; cache is on by default
